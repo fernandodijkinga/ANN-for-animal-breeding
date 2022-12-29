@@ -1,0 +1,35 @@
+def ANN (x,y):
+    xlen = len(x.columns)
+    epochs = 20000
+    verbose = 1
+    batch_size = 32
+    validation_split = 0.2
+    tfa.metrics.RSquare()
+
+    Adam = tf.keras.optimizers.Adam(
+        learning_rate=0.00005,
+        beta_1=0.9,
+        beta_2=0.999,
+        epsilon=1e-07,
+        amsgrad=False,
+        name='Adam')
+
+    earlystopping = callbacks.EarlyStopping(monitor ="val_loss", 
+                                            mode ="min", patience = 75, 
+                                            restore_best_weights = True)#25
+
+    model = Sequential()
+    model.add(Dense(units = 1, activation = 'linear', input_shape=[xlen]))
+    model.add(Dense(units = 128, activation = 'relu'))
+    model.add(Dense(units = 128, activation = 'elu'))
+    model.add(Dense(units = 128, activation = 'relu'))
+    model.add(Dense(units = 1, activation = 'linear'))
+    model.compile(loss='mae', optimizer=Adam, metrics=tfa.metrics.r_square.RSquare())
+    hist = model.fit(y=y, x=x, epochs=epochs, verbose=verbose, batch_size=batch_size, validation_split=validation_split, callbacks=[earlystopping], validation_data =(x, y))
+    pred = model.predict(x)
+    model.evaluate(x,y, batch_size=16)
+
+    corr = pearsonr(y, pred)
+    return model, hist, pred, corr
+
+model1, hist1, pred1, corr1 = ANN(x,y)
