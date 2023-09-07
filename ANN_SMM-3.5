@@ -1,0 +1,908 @@
+#IMPORTAR PACOTES E BIBLIOTECAS
+import os 
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+
+import json
+import tensorflow as tf
+import psycopg2 as pg
+import psycopg2.extras
+import time
+import sys
+import boto3
+
+lambda_client = boto3.client('lambda', region_name='us-west-1')
+
+# FUNÇÃO INICIAL DE CHAMADA DO LAMBDA
+def lambda_handler(event, context):
+    # PERCORRE AS MENSAGENS DA FILA
+    for queue in event['Records']:
+
+        # PERCORRE AS PREDIÇÕES COLOCADAS NA FILA
+        for value in json.loads(queue['body'])['Records']:
+            print("Batch: " + value['batch'])
+            print("UUID: " + value['uuid'])
+            print("Sire: " + value['sire'])
+            print("Mgs: " + value['mgs'])
+            print("Mggs: " + value['mggs'])
+
+            # EFETUA A PREDIÇÃO
+            prediction(value['batch'], value['uuid'], value['sire'], value['mgs'], value['mggs'])
+		
+# FUNÇÃO DE DEBUG LOCAL
+def debug():
+    print("Iniciando em modo debug")
+
+    # AJUSTA AS VARIÁVEIS DE AMBIENTE
+    os.environ['PG_DATABASE'] = 'genmate_inovatta_homologacao'
+    os.environ['PG_HOST'] = 'homologacao.sistema.genmate.com.br'
+    os.environ['PG_USER'] = 'genmate_user_inovatta_homologacao'
+    os.environ['PG_PASS'] = 'F7IUdyKD8n]y'
+    os.environ['PG_PORT'] = '5432'
+
+    prediction('53196287-078b-4a87-a7cf-f7b663636f6d', '8af811c5-6a29-4300-9942-dce74af0f720', '151HO03239', '014HO07718', '513HO03123')
+
+# FUNÇÃO QUE EFETUA A PREDIÇÃO
+def prediction(batch, uuid, sire, mgs, mggs):   
+    # PEGA O INÍCIO DA EXECUÇÃO
+    inicio = time.time()
+
+    # PUXAR OS MODELOS TREINADOS
+    model_tpi = tf.keras.models.load_model('model_h5/model_ANN_TPI3.h5')
+    model_nm = tf.keras.models.load_model('model_h5/model_ANN_NM.h5')
+    model_cm = tf.keras.models.load_model('model_h5/model_ANN_CM.h5')
+    model_efi = tf.keras.models.load_model('model_h5/model_ANN_GEFI.h5')
+    model_milk = tf.keras.models.load_model('model_h5/model_ANN_MILK.h5')
+    model_fat = tf.keras.models.load_model('model_h5/model_ANN_FAT.h5')
+    model_pro = tf.keras.models.load_model('model_h5/model_ANN_PRO.h5')
+    model_fatp = tf.keras.models.load_model('model_h5/model_ANN_FAT_P.h5')
+    model_prop = tf.keras.models.load_model('model_h5/model_ANN_PRO_P.h5')
+    model_fe = tf.keras.models.load_model('model_h5/model_ANN_FE.h5')
+    model_fsav = tf.keras.models.load_model('model_h5/model_ANN_FSAV.h5')
+    model_scs = tf.keras.models.load_model('model_h5/model_ANN_SCS.h5')
+    model_pl = tf.keras.models.load_model('model_h5/model_ANN_PL.h5')
+    model_hliv = tf.keras.models.load_model('model_h5/model_ANN_HLIV.h5')
+    model_liv = tf.keras.models.load_model('model_h5/model_ANN_LIV.h5')
+    model_dpr = tf.keras.models.load_model('model_h5/model_ANN_DPR.h5')
+    model_hcr = tf.keras.models.load_model('model_h5/model_ANN_HCR.h5')
+    model_ccr = tf.keras.models.load_model('model_h5/model_ANN_CCR.h5')
+    model_fi = tf.keras.models.load_model('model_h5/model_ANN_FI.h5')
+    model_mast = tf.keras.models.load_model('model_h5/model_ANN_MAST.h5')
+    model_metr = tf.keras.models.load_model('model_h5/model_ANN_METR.h5')
+    model_retp = tf.keras.models.load_model('model_h5/model_ANN_RETP.h5')
+    model_keto = tf.keras.models.load_model('model_h5/model_ANN_KETO.h5')
+    model_da = tf.keras.models.load_model('model_h5/model_ANN_DA.h5')
+    model_mfev = tf.keras.models.load_model('model_h5/model_ANN_MFEV.h5')
+    model_ht = tf.keras.models.load_model('model_h5/model_ANN_HT.h5')
+    model_sce = tf.keras.models.load_model('model_h5/model_ANN_SCE.h5')
+    model_ssb = tf.keras.models.load_model('model_h5/model_ANN_SSB.h5')
+    model_efc = tf.keras.models.load_model('model_h5/model_ANN_EFC.h5')
+    model_ptat = tf.keras.models.load_model('model_h5/model_ANN_PTAT.h5')
+    model_udc = tf.keras.models.load_model('model_h5/model_ANN_UDC.h5')
+    model_flc = tf.keras.models.load_model('model_h5/model_ANN_FLC.h5')
+    model_bsc = tf.keras.models.load_model('model_h5/model_ANN_BSC.h5')
+    model_dc = tf.keras.models.load_model('model_h5/model_ANN_DC.h5')
+    model_st = tf.keras.models.load_model('model_h5/model_ANN_ST.h5')
+    model_sr = tf.keras.models.load_model('model_h5/model_ANN_SR.h5')
+    model_bd = tf.keras.models.load_model('model_h5/model_ANN_BD.h5')
+    model_df = tf.keras.models.load_model('model_h5/model_ANN_DF.h5')
+    model_ra = tf.keras.models.load_model('model_h5/model_ANN_RA.h5')
+    model_tw = tf.keras.models.load_model('model_h5/model_ANN_TW.h5')
+    model_rls = tf.keras.models.load_model('model_h5/model_ANN_RLS.h5')
+    model_rlr = tf.keras.models.load_model('model_h5/model_ANN_RLR.h5')
+    model_fa = tf.keras.models.load_model('model_h5/model_ANN_FA.h5')
+    model_fls = tf.keras.models.load_model('model_h5/model_ANN_FLS.h5')
+    model_fu = tf.keras.models.load_model('model_h5/model_ANN_FU.h5')
+    model_uh = tf.keras.models.load_model('model_h5/model_ANN_UH.h5')
+    model_uw = tf.keras.models.load_model('model_h5/model_ANN_UW.h5')
+    model_ud = tf.keras.models.load_model('model_h5/model_ANN_UD.h5')
+    model_uc = tf.keras.models.load_model('model_h5/model_ANN_UC.h5')
+    model_ftp = tf.keras.models.load_model('model_h5/model_ANN_FTP.h5')
+    model_rtp = tf.keras.models.load_model('model_h5/model_ANN_RTP.h5')
+    model_tl = tf.keras.models.load_model('model_h5/model_ANN_TL.h5')
+
+    # CONEXÃO COM A BASE DE DADOS
+    print("Conectando a Database: " + os.environ['PG_DATABASE'])
+    conn = pg.connect(database=os.environ['PG_DATABASE'], host=os.environ['PG_HOST'], user=os.environ['PG_USER'], password=os.environ['PG_PASS'], port=os.environ['PG_PORT'])
+    cursor = conn.cursor(cursor_factory=pg.extras.DictCursor)
+
+    # BUSCAR OS DADOS DA REQUEST
+    data_sire = sire
+    data_mgs = mgs
+    data_mggs = mggs
+
+    cursor.execute("""SELECT tpi
+                           , lifetimenetmerit
+                           , lifetimecheesemerit
+                           , expectedfutureinbreeding
+                           , milk
+                           , fat
+                           , protein
+                           , fatpercent
+                           , proteinpercent
+                           , productionefficiency
+                           , feedsaved
+                           , somaticcellscore
+                           , productivelife
+                           , heiferlivability
+                           , cowlivability
+                           , daughterpregnancyrate
+                           , heiferconceptionrate
+                           , cowconceptionrate
+                           , fertilityandfitness
+                           , cdcbmastitis
+                           , cdcbmetritis
+                           , cdcbretainedplacenta
+                           , cdcbketosis
+                           , cdcbdisplacedabomasum
+                           , cdcbhypocaicemia
+                           , sirecalvingease
+                           , sirestillbirth
+                           , agefirstchildbirth
+                           , predictedtransmittingabilitytype
+                           , uddercomposite
+                           , feetandlegcomposite
+                           , health
+                           , bodysizecomposite
+                           , dairycomposite
+                           , stature
+                           , strength
+                           , bodydepth
+                           , dairyform
+                           , rumpangle
+                           , thurlwidth
+                           , rearlegssideview
+                           , rearlegsrearview
+                           , footangle
+                           , feetandlegsscore
+                           , foreudderattachement
+                           , rearudderheight
+                           , rearudderwidth
+                           , uddercleft
+                           , udderdepth
+                           , frontteatplacement
+                           , rearteatplacement
+                           , teatlength
+                           , durationpregnancy
+                           , bodyconditionscore
+                           , milkingspeed
+                           , milkingtemperament 
+                        FROM touro 
+                       WHERE naabcode = '""" + data_sire + "'")
+    sire = cursor.fetchone()
+
+    cursor.execute("""SELECT tpi
+                           , lifetimenetmerit
+                           , lifetimecheesemerit
+                           , expectedfutureinbreeding
+                           , milk
+                           , fat
+                           , protein
+                           , fatpercent
+                           , proteinpercent
+                           , productionefficiency
+                           , feedsaved
+                           , somaticcellscore
+                           , productivelife
+                           , heiferlivability
+                           , cowlivability
+                           , daughterpregnancyrate
+                           , heiferconceptionrate
+                           , cowconceptionrate
+                           , fertilityandfitness
+                           , cdcbmastitis
+                           , cdcbmetritis
+                           , cdcbretainedplacenta
+                           , cdcbketosis
+                           , cdcbdisplacedabomasum
+                           , cdcbhypocaicemia
+                           , sirecalvingease
+                           , sirestillbirth
+                           , agefirstchildbirth
+                           , predictedtransmittingabilitytype
+                           , uddercomposite
+                           , feetandlegcomposite
+                           , health
+                           , bodysizecomposite
+                           , dairycomposite
+                           , stature
+                           , strength
+                           , bodydepth
+                           , dairyform
+                           , rumpangle
+                           , thurlwidth
+                           , rearlegssideview
+                           , rearlegsrearview
+                           , footangle
+                           , feetandlegsscore
+                           , foreudderattachement
+                           , rearudderheight
+                           , rearudderwidth
+                           , uddercleft
+                           , udderdepth
+                           , frontteatplacement
+                           , rearteatplacement
+                           , teatlength
+                           , durationpregnancy
+                           , bodyconditionscore
+                           , milkingspeed
+                           , milkingtemperament
+                        FROM touro 
+                       WHERE naabcode = '""" + data_mgs + "'")
+    mgs = cursor.fetchone()
+
+    cursor.execute("""SELECT tpi
+                           , lifetimenetmerit
+                           , lifetimecheesemerit
+                           , expectedfutureinbreeding
+                           , milk
+                           , fat
+                           , protein
+                           , fatpercent
+                           , proteinpercent
+                           , productionefficiency
+                           , feedsaved
+                           , somaticcellscore
+                           , productivelife
+                           , heiferlivability
+                           , cowlivability
+                           , daughterpregnancyrate
+                           , heiferconceptionrate
+                           , cowconceptionrate
+                           , fertilityandfitness
+                           , cdcbmastitis
+                           , cdcbmetritis
+                           , cdcbretainedplacenta
+                           , cdcbketosis
+                           , cdcbdisplacedabomasum
+                           , cdcbhypocaicemia
+                           , sirecalvingease
+                           , sirestillbirth
+                           , agefirstchildbirth
+                           , predictedtransmittingabilitytype
+                           , uddercomposite
+                           , feetandlegcomposite
+                           , health
+                           , bodysizecomposite
+                           , dairycomposite
+                           , stature
+                           , strength
+                           , bodydepth
+                           , dairyform
+                           , rumpangle
+                           , thurlwidth
+                           , rearlegssideview
+                           , rearlegsrearview
+                           , footangle
+                           , feetandlegsscore
+                           , foreudderattachement
+                           , rearudderheight
+                           , rearudderwidth
+                           , uddercleft
+                           , udderdepth
+                           , frontteatplacement
+                           , rearteatplacement
+                           , teatlength
+                           , durationpregnancy
+                           , bodyconditionscore
+                           , milkingspeed
+                           , milkingtemperament
+                        FROM touro 
+                       WHERE naabcode = '""" + data_mggs + "'")
+    mggs = cursor.fetchone()
+
+    cursor.execute("""SELECT AVG(tpi) AS tpi
+                           , AVG(lifetimenetmerit) AS lifetimenetmerit
+                           , AVG(lifetimecheesemerit) AS lifetimecheesemerit
+                           , AVG(milk) AS milk
+                           , AVG(fat) AS fat
+                           , AVG(fertilityandfitness) AS fertilityandfitness
+                           , AVG(protein) AS protein
+                           , AVG(fatpercent) AS fatpercent
+                           , AVG(proteinpercent) AS proteinpercent
+                           , AVG(productionefficiency) AS productionefficiency
+                           , AVG(feedsaved) AS feedsaved
+                           , AVG(somaticcellscore) AS somaticcellscore
+                           , AVG(productivelife) AS productivelife
+                           , AVG(heiferlivability) AS heiferlivability
+                           , AVG(cowlivability) AS cowlivability
+                           , AVG(daughterpregnancyrate) AS daughterpregnancyrate
+                           , AVG(heiferconceptionrate) AS heiferconceptionrate
+                           , AVG(cowconceptionrate) AS cowconceptionrate
+                           , AVG(fertilityandfitness) AS fertilityandfitness
+                           , AVG(cdcbmastitis) AS cdcbmastitis
+                           , AVG(cdcbmetritis) AS cdcbmetritis
+                           , AVG(cdcbretainedplacenta) AS cdcbretainedplacenta
+                           , AVG(cdcbketosis) AS cdcbketosis
+                           , AVG(cdcbdisplacedabomasum) AS cdcbdisplacedabomasum
+                           , AVG(cdcbhypocaicemia) AS cdcbhypocaicemia
+                           , AVG(health) AS health
+                           , AVG(agefirstchildbirth) AS agefirstchildbirth
+                           , AVG(sirecalvingease) AS sirecalvingease
+                           , AVG(sirestillbirth) AS sirestillbirth
+                           , AVG(predictedtransmittingabilitytype) AS predictedtransmittingabilitytype
+                           , AVG(uddercomposite) AS uddercomposite
+                           , AVG(feetandlegcomposite) AS feetandlegcomposite
+                           , AVG(bodysizecomposite) AS bodysizecomposite
+                           , AVG(dairycomposite) AS dairycomposite
+                           , AVG(stature) AS stature
+                           , AVG(strength) AS strength
+                           , AVG(bodydepth) AS bodydepth
+                           , AVG(dairyform) AS dairyform
+                           , AVG(rumpangle) AS rumpangle
+                           , AVG(thurlwidth) AS thurlwidth
+                           , AVG(rearlegssideview) AS rearlegssideview
+                           , AVG(rearlegsrearview) AS rearlegsrearview
+                           , AVG(footangle) AS footangle
+                           , AVG(feetandlegsscore) AS feetandlegsscore
+                           , AVG(foreudderattachement) AS foreudderattachement
+                           , AVG(rearudderheight) AS rearudderheight
+                           , AVG(rearudderwidth) AS rearudderwidth
+                           , AVG(uddercleft) AS uddercleft
+                           , AVG(udderdepth) AS udderdepth
+                           , AVG(frontteatplacement) AS frontteatplacement
+                           , AVG(rearteatplacement) AS rearteatplacement
+                           , AVG(teatlength) AS teatlength
+                           , AVG(durationpregnancy) AS durationpregnancy
+                           , AVG(bodyconditionscore) AS bodyconditionscore
+                           , AVG(milkingspeed) AS milkingspeed
+                           , AVG(milkingtemperament) AS milkingtemperament 
+                        FROM touro""")
+    mean = cursor.fetchone()
+
+    sire_tpi = float(sire['tpi'])
+    sire_nm = float(sire['lifetimenetmerit'])
+    sire_cm = float(sire['lifetimecheesemerit'])
+    sire_efi = float(sire['expectedfutureinbreeding'])
+    sire_milk = int(sire['milk'])
+    sire_fat = int(sire['fat'])
+    sire_pro = int(sire['protein'])
+    sire_fat_p = float(sire['fatpercent'])
+    sire_pro_p = float(sire['proteinpercent'])
+    sire_fe = int(sire['productionefficiency'])
+    sire_fsav = int(sire['feedsaved'])
+    sire_scs = float(sire['somaticcellscore'])
+    sire_pl = float(sire['productivelife'])
+    sire_hliv = float(sire['heiferlivability'])
+    sire_liv = float(sire['cowlivability'])
+    sire_dpr = float(sire['daughterpregnancyrate'])
+    sire_hcr = float(sire['heiferconceptionrate'])
+    sire_ccr = float(sire['cowconceptionrate'])
+    sire_fi = float(sire['fertilityandfitness'])
+    sire_mast = float(sire['cdcbmastitis'])
+    sire_metr = float(sire['cdcbmetritis'])
+    sire_retp = float(sire['cdcbretainedplacenta'])
+    sire_keto = float(sire['cdcbketosis'])
+    sire_da = float(sire['cdcbdisplacedabomasum'])
+    sire_mfev = float(sire['cdcbhypocaicemia'])
+    sire_sce = float(sire['sirecalvingease'])
+    sire_ssb = float(sire['sirestillbirth'])
+    sire_efc = float(sire['agefirstchildbirth'])
+    sire_ptat = float(sire['predictedtransmittingabilitytype'])
+    sire_udc = float(sire['uddercomposite'])
+    sire_flc = float(sire['feetandlegcomposite'])
+    sire_ht = float(sire['health'])
+    sire_bsc = float(sire['bodysizecomposite'])
+    sire_dc = float(sire['dairycomposite'])
+    sire_st = float(sire['stature'])
+    sire_sr = float(sire['strength'])
+    sire_bd = float(sire['bodydepth'])
+    sire_df = float(sire['dairyform'])
+    sire_ra = float(sire['rumpangle'])
+    sire_tw = float(sire['thurlwidth'])
+    sire_rls = float(sire['rearlegssideview'])
+    sire_rlr = float(sire['rearlegsrearview'])
+    sire_fa = float(sire['footangle'])
+    sire_fls = float(sire['feetandlegsscore'])
+    sire_fu = float(sire['foreudderattachement'])
+    sire_uh = float(sire['rearudderheight'])
+    sire_uw = float(sire['rearudderwidth'])
+    sire_uc = float(sire['uddercleft'])
+    sire_ud = float(sire['udderdepth'])
+    sire_ftp = float(sire['frontteatplacement'])
+    sire_rtp = float(sire['rearteatplacement'])
+    sire_tl = float(sire['teatlength'])
+    sire_gl = float(sire['durationpregnancy'])
+    sire_bcs = int(sire['bodyconditionscore'])
+    sire_ms = int(sire['milkingspeed'])
+    sire_mt = int(sire['milkingtemperament'])
+
+    mgs_tpi = float(mgs['tpi'])
+    mgs_nm = float(mgs['lifetimenetmerit'])
+    mgs_cm = float(mgs['lifetimecheesemerit'])
+    mgs_efi = float(mgs['expectedfutureinbreeding'])
+    mgs_milk = int(mgs['milk'])
+    mgs_fat = int(mgs['fat'])
+    mgs_pro = int(mgs['protein'])
+    mgs_fat_p = float(mgs['fatpercent'])
+    mgs_pro_p = float(mgs['proteinpercent'])
+    mgs_fe = int(mgs['productionefficiency'])
+    mgs_fsav = int(mgs['feedsaved'])
+    mgs_scs = float(mgs['somaticcellscore'])
+    mgs_pl = float(mgs['productivelife'])
+    mgs_hliv = float(mgs['heiferlivability'])
+    mgs_liv = float(mgs['cowlivability'])
+    mgs_dpr = float(mgs['daughterpregnancyrate'])
+    mgs_hcr = float(mgs['heiferconceptionrate'])
+    mgs_ccr = float(mgs['cowconceptionrate'])
+    mgs_fi = float(mgs['fertilityandfitness'])
+    mgs_mast = float(mgs['cdcbmastitis'])
+    mgs_metr = float(mgs['cdcbmetritis'])
+    mgs_retp = float(mgs['cdcbretainedplacenta'])
+    mgs_keto = float(mgs['cdcbketosis'])
+    mgs_da = float(mgs['cdcbdisplacedabomasum'])
+    mgs_mfev = float(mgs['cdcbhypocaicemia'])
+    mgs_sce = float(mgs['sirecalvingease'])
+    mgs_ssb = float(mgs['sirestillbirth'])
+    mgs_efc = float(mgs['agefirstchildbirth'])
+    mgs_ptat = float(mgs['predictedtransmittingabilitytype'])
+    mgs_udc = float(mgs['uddercomposite'])
+    mgs_flc = float(mgs['feetandlegcomposite'])
+    mgs_ht = float(mgs['health'])
+    mgs_bsc = float(mgs['bodysizecomposite'])
+    mgs_dc = float(mgs['dairycomposite'])
+    mgs_st = float(mgs['stature'])
+    mgs_sr = float(mgs['strength'])
+    mgs_bd = float(mgs['bodydepth'])
+    mgs_df = float(mgs['dairyform'])
+    mgs_ra = float(mgs['rumpangle'])
+    mgs_tw = float(mgs['thurlwidth'])
+    mgs_rls = float(mgs['rearlegssideview'])
+    mgs_rlr = float(mgs['rearlegsrearview'])
+    mgs_fa = float(mgs['footangle'])
+    mgs_fls = float(mgs['feetandlegsscore'])
+    mgs_fu = float(mgs['foreudderattachement'])
+    mgs_uh = float(mgs['rearudderheight'])
+    mgs_uw = float(mgs['rearudderwidth'])
+    mgs_uc = float(mgs['uddercleft'])
+    mgs_ud = float(mgs['udderdepth'])
+    mgs_ftp = float(mgs['frontteatplacement'])
+    mgs_rtp = float(mgs['rearteatplacement'])
+    mgs_tl = float(mgs['teatlength'])
+    mgs_gl = float(mgs['durationpregnancy'])
+    mgs_bcs = int(mgs['bodyconditionscore'])
+    mgs_ms = int(mgs['milkingspeed'])
+    mgs_mt = int(mgs['milkingtemperament'])
+
+    mggs_tpi = float(mggs['tpi'])
+    mggs_nm = float(mggs['lifetimenetmerit'])
+    mggs_cm = float(mggs['lifetimecheesemerit'])
+    mggs_efi = float(mggs['expectedfutureinbreeding'])
+    mggs_milk = int(mggs['milk'])
+    mggs_fat = int(mggs['fat'])
+    mggs_pro = int(mggs['protein'])
+    mggs_fat_p = float(mggs['fatpercent'])
+    mggs_pro_p = float(mggs['proteinpercent'])
+    mggs_fe = int(mggs['productionefficiency'])
+    mggs_fsav = int(mggs['feedsaved'])
+    mggs_scs = float(mggs['somaticcellscore'])
+    mggs_pl = float(mggs['productivelife'])
+    mggs_hliv = float(mggs['heiferlivability'])
+    mggs_liv = float(mggs['cowlivability'])
+    mggs_dpr = float(mggs['daughterpregnancyrate'])
+    mggs_hcr = float(mggs['heiferconceptionrate'])
+    mggs_ccr = float(mggs['cowconceptionrate'])
+    mggs_fi = float(mggs['fertilityandfitness'])
+    mggs_mast = float(mggs['cdcbmastitis'])
+    mggs_metr = float(mggs['cdcbmetritis'])
+    mggs_retp = float(mggs['cdcbretainedplacenta'])
+    mggs_keto = float(mggs['cdcbketosis'])
+    mggs_da = float(mggs['cdcbdisplacedabomasum'])
+    mggs_mfev = float(mggs['cdcbhypocaicemia'])
+    mggs_sce = float(mggs['sirecalvingease'])
+    mggs_ssb = float(mggs['sirestillbirth'])
+    mggs_efc = float(mggs['agefirstchildbirth'])
+    mggs_ptat = float(mggs['predictedtransmittingabilitytype'])
+    mggs_udc = float(mggs['uddercomposite'])
+    mggs_flc = float(mggs['feetandlegcomposite'])
+    mggs_ht = float(mggs['health'])
+    mggs_bsc = float(mggs['bodysizecomposite'])
+    mggs_dc = float(mggs['dairycomposite'])
+    mggs_st = float(mggs['stature'])
+    mggs_sr = float(mggs['strength'])
+    mggs_bd = float(mggs['bodydepth'])
+    mggs_df = float(mggs['dairyform'])
+    mggs_ra = float(mggs['rumpangle'])
+    mggs_tw = float(mggs['thurlwidth'])
+    mggs_rls = float(mggs['rearlegssideview'])
+    mggs_rlr = float(mggs['rearlegsrearview'])
+    mggs_fa = float(mggs['footangle'])
+    mggs_fls = float(mggs['feetandlegsscore'])
+    mggs_fu = float(mggs['foreudderattachement'])
+    mggs_uh = float(mggs['rearudderheight'])
+    mggs_uw = float(mggs['rearudderwidth'])
+    mggs_uc = float(mggs['uddercleft'])
+    mggs_ud = float(mggs['udderdepth'])
+    mggs_ftp = float(mggs['frontteatplacement'])
+    mggs_rtp = float(mggs['rearteatplacement'])
+    mggs_tl = float(mggs['teatlength'])
+    mggs_gl = float(mggs['durationpregnancy'])
+    mggs_bcs = int(mggs['bodyconditionscore'])
+    mggs_ms = int(mggs['milkingspeed'])
+    mggs_mt = int(mggs['milkingtemperament'])
+
+    x = [[sire_tpi,sire_nm,sire_cm,sire_efi,sire_milk,sire_fat,sire_pro,sire_fat_p,sire_pro_p,sire_fe,sire_fsav,sire_scs,sire_pl,sire_hliv,sire_liv,sire_dpr,sire_hcr,sire_ccr,sire_fi,sire_mast,sire_metr,sire_retp,sire_keto,sire_da,sire_mfev,sire_ht,sire_gl,sire_efc,sire_sce,sire_ssb,sire_ptat,sire_udc,sire_flc,sire_bsc,sire_dc,sire_st,sire_sr,sire_bd,sire_df,sire_ra,sire_tw,sire_rls,sire_rlr,sire_fa,sire_fls,sire_fu,sire_uh,sire_uw,sire_uc,sire_ud,sire_ftp,sire_rtp,sire_tl,mgs_tpi,mgs_nm,mgs_cm,mgs_efi,mgs_milk,mgs_fat,mgs_pro,mgs_fat_p,mgs_pro_p,mgs_fe,mgs_fsav,mgs_scs,mgs_pl,mgs_hliv,mgs_liv,mgs_dpr,mgs_hcr,mgs_ccr,mgs_fi,mgs_mast,mgs_metr,mgs_retp,mgs_keto,mgs_da,mgs_mfev,mgs_ht,mgs_gl,mgs_efc,mgs_sce,mgs_ssb,mgs_ptat,mgs_udc,mgs_flc,mgs_bsc,mgs_dc,mgs_st,mgs_sr,mgs_bd,mgs_df,mgs_ra,mgs_tw,mgs_rls,mgs_rlr,mgs_fa,mgs_fls,mgs_fu,mgs_uh,mgs_uw,mgs_uc,mgs_ud,mgs_ftp,mgs_rtp,mgs_tl,mggs_tpi,mggs_nm,mggs_cm,mggs_efi,mggs_milk,mggs_fat,mggs_pro,mggs_fat_p,mggs_pro_p,mggs_fe,mggs_fsav,mggs_scs,mggs_pl,mggs_hliv,mggs_liv,mggs_dpr,mggs_hcr,mggs_ccr,mggs_fi,mggs_mast,mggs_metr,mggs_retp,mggs_keto,mggs_da,mggs_mfev,mggs_ht,mggs_gl,mggs_efc,mggs_sce,mggs_ssb,mggs_ptat,mggs_udc,mggs_flc,mggs_bsc,mggs_dc,mggs_st,mggs_sr,mggs_bd,mggs_df,mggs_ra,mggs_tw,mggs_rls,mggs_rlr,mggs_fa,mggs_fls,mggs_fu,mggs_uh,mggs_uw,mggs_uc,mggs_ud,mggs_ftp,mggs_rtp,mggs_tl]]
+
+    x = tf.convert_to_tensor(x)
+
+    #GERADOR DE DADOS GENETICOS
+    #@tf.function
+    def predict(x):
+        pta_tpi = model_tpi(x)
+        pta_nm = model_nm(x)
+        pta_cm = model_cm(x)
+        pta_efi = model_efi(x)
+        pta_milk = model_milk(x)
+        pta_fat = model_fat(x)
+        pta_pro = model_pro(x)
+        pta_fatp = model_fatp(x)
+        pta_prop = model_prop(x)
+        pta_fe = model_fe(x)
+        pta_fsav = model_fsav(x)
+        pta_scs = model_scs(x)
+        pta_pl = model_pl(x)
+        pta_hliv = model_hliv(x)
+        pta_liv = model_liv(x)
+        pta_dpr = model_dpr(x)
+        pta_hcr = model_hcr(x)
+        pta_ccr = model_ccr(x)
+        pta_fi = model_fi(x)
+        pta_mast = model_mast(x)
+        pta_metr = model_metr(x)
+        pta_retp = model_retp(x)
+        pta_keto = model_keto(x)
+        pta_da = model_da(x)
+        pta_mfev = model_mfev(x)
+        pta_ht = model_ht(x)
+        pta_efc = model_efc(x)
+        pta_sce = model_sce(x)
+        pta_ssb = model_ssb(x)
+        pta_ptat = model_ptat(x)
+        pta_udc = model_udc(x)
+        pta_flc = model_flc(x)
+        pta_bsc = model_bsc(x)
+        pta_dc = model_dc(x)
+        pta_st = model_st(x)
+        pta_sr = model_sr(x)
+        pta_bd = model_bd(x)
+        pta_df = model_df(x)
+        pta_ra = model_ra(x)
+        pta_tw = model_tw(x)
+        pta_rls = model_rls(x)
+        pta_rlr = model_rlr(x)
+        pta_fa = model_fa(x)
+        pta_fls = model_fls(x)
+        pta_fu = model_fu(x)
+        pta_uh = model_uh(x)
+        pta_uw = model_uw(x)
+        pta_uc = model_uc(x)
+        pta_ud = model_ud(x)
+        pta_ftp = model_ftp(x)
+        pta_rtp = model_rtp(x)
+        pta_tl = model_tl(x)
+
+        return pta_tpi,pta_nm,pta_cm,pta_efi,pta_milk,pta_fat,pta_pro,pta_fatp,pta_prop,pta_fe,pta_fsav,pta_scs,pta_pl,pta_hliv,pta_liv,pta_dpr,pta_hcr,pta_ccr,pta_fi,pta_mast,pta_metr,pta_retp,pta_keto,pta_da,pta_mfev,pta_ht,pta_efc,pta_sce,pta_ssb,pta_ptat,pta_udc,pta_flc,pta_bsc,pta_dc,pta_st,pta_sr,pta_bd,pta_df,pta_ra,pta_tw,pta_rls,pta_rlr,pta_fa,pta_fls,pta_fu,pta_uh,pta_uw,pta_uc,pta_ud,pta_ftp,pta_rtp,pta_tl
+
+    pta_tpi,pta_nm,pta_cm,pta_efi,pta_milk,pta_fat,pta_pro,pta_fatp,pta_prop,pta_fe,pta_fsav,pta_scs,pta_pl,pta_hliv,pta_liv,pta_dpr,pta_hcr,pta_ccr,pta_fi,pta_mast,pta_metr,pta_retp,pta_keto,pta_da,pta_mfev,pta_ht,pta_efc,pta_sce,pta_ssb,pta_ptat,pta_udc,pta_flc,pta_bsc,pta_dc,pta_st,pta_sr,pta_bd,pta_df,pta_ra,pta_tw,pta_rls,pta_rlr,pta_fa,pta_fls,pta_fu,pta_uh,pta_uw,pta_uc,pta_ud,pta_ftp,pta_rtp,pta_tl = predict(x)
+
+    #no arquivo ANN_3.5_prediction-single eu criei as variáveis de médias, porem, neste codigo vi que é possível fazer diretamente
+    def parent_average(sire_tpi,sire_nm,sire_cm,sire_efi,sire_milk,sire_fat,sire_pro,sire_fat_p,sire_pro_p,sire_fe,sire_fsav,sire_scs,sire_pl,sire_hliv,sire_liv,sire_dpr,sire_hcr,sire_ccr,sire_fi,sire_mast,sire_metr,sire_retp,sire_keto,sire_da,sire_mfev,sire_ht,sire_gl,sire_efc,sire_sce,sire_ssb,sire_ptat,sire_udc,sire_flc,sire_bsc,sire_dc,sire_st,sire_sr,sire_bd,sire_df,sire_ra,sire_tw,sire_rls,sire_rlr,sire_fa,sire_fls,sire_fu,sire_uh,sire_uw,sire_uc,sire_ud,sire_ftp,sire_rtp,sire_tl,mgs_tpi,mgs_nm,mgs_cm,mgs_efi,mgs_milk,mgs_fat,mgs_pro,mgs_fat_p,mgs_pro_p,mgs_fe,mgs_fsav,mgs_scs,mgs_pl,mgs_hliv,mgs_liv,mgs_dpr,mgs_hcr,mgs_ccr,mgs_fi,mgs_mast,mgs_metr,mgs_retp,mgs_keto,mgs_da,mgs_mfev,mgs_ht,mgs_gl,mgs_efc,mgs_sce,mgs_ssb,mgs_ptat,mgs_udc,mgs_flc,mgs_bsc,mgs_dc,mgs_st,mgs_sr,mgs_bd,mgs_df,mgs_ra,mgs_tw,mgs_rls,mgs_rlr,mgs_fa,mgs_fls,mgs_fu,mgs_uh,mgs_uw,mgs_uc,mgs_ud,mgs_ftp,mgs_rtp,mgs_tl,mggs_tpi,mggs_nm,mggs_cm,mggs_efi,mggs_milk,mggs_fat,mggs_pro,mggs_fat_p,mggs_pro_p,mggs_fe,mggs_fsav,mggs_scs,mggs_pl,mggs_hliv,mggs_liv,mggs_dpr,mggs_hcr,mggs_ccr,mggs_fi,mggs_mast,mggs_metr,mggs_retp,mggs_keto,mggs_da,mggs_mfev,mggs_ht,mggs_gl,mggs_efc,mggs_sce,mggs_ssb,mggs_ptat,mggs_udc,mggs_flc,mggs_bsc,mggs_dc,mggs_st,mggs_sr,mggs_bd,mggs_df,mggs_ra,mggs_tw,mggs_rls,mggs_rlr,mggs_fa,mggs_fls,mggs_fu,mggs_uh,mggs_uw,mggs_uc,mggs_ud,mggs_ftp,mggs_rtp,mggs_tl):
+        pa_tpi = (sire_tpi * 0.5) + (mgs_tpi * 0.25) + (mggs_tpi * 0.125) + (float(mean['tpi']) * 0.125)
+        pa_nm = (sire_nm * 0.5) + (mgs_nm * 0.25) + (mggs_nm * 0.125) + (float(mean['lifetimenetmerit']) * 0.125)
+        pa_cm = (sire_cm * 0.5) + (mgs_cm * 0.25) + (mggs_cm * 0.125) + (float(mean['lifetimecheesemerit']) * 0.125)
+        pa_efi = (sire_efi * 0.5) + (mgs_efi * 0.25) + (mggs_efi * 0.125) + (float(mean['milk']) * 0.125)
+        pa_milk = (sire_milk * 0.5) + (mgs_milk * 0.25) + (mggs_milk * 0.125) + (float(mean['fat']) * 0.125)
+        pa_fat = (sire_fat * 0.5) + (mgs_fat * 0.25) + (mggs_fat * 0.125) + (float(mean['fertilityandfitness']) * 0.125)
+        pa_pro = (sire_pro * 0.5) + (mgs_pro * 0.25) + (mggs_pro * 0.125) + (float(mean['protein']) * 0.125)
+        pa_fatp = (sire_fat_p * 0.5) + (mgs_fat_p * 0.25) + (mggs_fat_p * 0.125) + (float(mean['fatpercent']) * 0.125)
+        pa_prop = (sire_pro_p * 0.5) + (mgs_pro_p * 0.25) + (mggs_pro_p * 0.125) + (float(mean['proteinpercent']) * 0.125)
+        pa_fe = (sire_fe * 0.5) + (mgs_fe * 0.25) + (mggs_fe * 0.125) + (float(mean['productionefficiency']) * 0.125)
+        pa_fsav = (sire_fsav * 0.5) + (mgs_fsav * 0.25) + (mggs_fsav * 0.125) + (float(mean['feedsaved']) * 0.125)
+        pa_scs = (sire_scs * 0.5) + (mgs_scs * 0.25) + (mggs_scs * 0.125) + (float(mean['somaticcellscore']) * 0.125)
+        pa_pl = (sire_pl * 0.5) + (mgs_pl * 0.25) + (mggs_pl * 0.125) + (float(mean['productivelife']) * 0.125)
+        pa_hliv = (sire_hliv * 0.5) + (mgs_hliv * 0.25) + (mggs_hliv * 0.125) + (float(mean['heiferlivability']) * 0.125)
+        pa_liv = (sire_liv * 0.5) + (mgs_liv * 0.25) + (mggs_liv * 0.125) + (float(mean['cowlivability']) * 0.125)
+        pa_dpr = (sire_dpr * 0.5) + (mgs_dpr * 0.25) + (mggs_dpr * 0.125) + (float(mean['daughterpregnancyrate']) * 0.125)
+        pa_hcr = (sire_hcr * 0.5) + (mgs_hcr * 0.25) + (mggs_hcr * 0.125) + (float(mean['heiferconceptionrate']) * 0.125)
+        pa_ccr = (sire_ccr * 0.5) + (mgs_ccr * 0.25) + (mggs_ccr * 0.125) + (float(mean['cowconceptionrate']) * 0.125)
+        pa_fi = (sire_fi * 0.5) + (mgs_fi * 0.25) + (mggs_fi * 0.125) + (float(mean['fertilityandfitness']) * 0.125)
+        pa_mast = (sire_mast * 0.5) + (mgs_mast * 0.25) + (mggs_mast * 0.125) + (float(mean['cdcbmastitis']) * 0.125)
+        pa_metr = (sire_metr * 0.5) + (mgs_metr * 0.25) + (mggs_metr * 0.125) + (float(mean['cdcbmetritis']) * 0.125)
+        pa_retp = (sire_retp * 0.5) + (mgs_retp * 0.25) + (mggs_retp * 0.125) + (float(mean['cdcbretainedplacenta']) * 0.125)
+        pa_keto = (sire_keto * 0.5) + (mgs_keto * 0.25) + (mggs_keto * 0.125) + (float(mean['cdcbketosis']) * 0.125)
+        pa_da = (sire_da * 0.5) + (mgs_da * 0.25) + (mggs_da * 0.125) + (float(mean['cdcbdisplacedabomasum']) * 0.125)
+        pa_mfev = (sire_mfev * 0.5) + (mgs_mfev * 0.25) + (mggs_mfev * 0.125) + (float(mean['cdcbhypocaicemia']) * 0.125)
+        pa_ht = (sire_ht * 0.5) + (mgs_ht * 0.25) + (mggs_ht * 0.125) + (float(mean['health']) * 0.125)
+        pa_efc = (sire_efc * 0.5) + (mgs_efc * 0.25) + (mggs_efc * 0.125) + (float(mean['agefirstchildbirth']) * 0.125)
+        pa_sce = (sire_sce * 0.5) + (mgs_sce * 0.25) + (mggs_sce * 0.125) + (float(mean['sirecalvingease']) * 0.125)
+        pa_ssb = (sire_ssb * 0.5) + (mgs_ssb * 0.25) + (mggs_ssb * 0.125) + (float(mean['sirestillbirth']) * 0.125)
+        pa_ptat = (sire_ptat * 0.5) + (mgs_ptat * 0.25) + (mggs_ptat * 0.125) + (float(mean['predictedtransmittingabilitytype']) * 0.125)
+        pa_udc = (sire_udc * 0.5) + (mgs_udc * 0.25) + (mggs_udc * 0.125) + (float(mean['uddercomposite']) * 0.125)
+        pa_flc = (sire_flc * 0.5) + (mgs_flc * 0.25) + (mggs_flc * 0.125) + (float(mean['feetandlegcomposite']) * 0.125)
+        pa_bsc = (sire_bsc * 0.5) + (mgs_bsc * 0.25) + (mggs_bsc * 0.125) + (float(mean['bodysizecomposite']) * 0.125)
+        pa_dc = (sire_dc * 0.5) + (mgs_dc * 0.25) + (mggs_dc * 0.125) + (float(mean['dairycomposite']) * 0.125)
+        pa_st = (sire_st * 0.5) + (mgs_st * 0.25) + (mggs_st * 0.125) + (float(mean['stature']) * 0.125)
+        pa_sr = (sire_sr * 0.5) + (mgs_sr * 0.25) + (mggs_sr * 0.125) + (float(mean['strength']) * 0.125)
+        pa_bd = (sire_bd * 0.5) + (mgs_bd * 0.25) + (mggs_bd * 0.125) + (float(mean['bodydepth']) * 0.125)
+        pa_df = (sire_df * 0.5) + (mgs_df * 0.25) + (mggs_df * 0.125) + (float(mean['dairyform']) * 0.125)
+        pa_ra = (sire_ra * 0.5) + (mgs_ra * 0.25) + (mggs_ra * 0.125) + (float(mean['rumpangle']) * 0.125)
+        pa_tw = (sire_tw * 0.5) + (mgs_tw * 0.25) + (mggs_tw * 0.125) + (float(mean['thurlwidth']) * 0.125)
+        pa_rls = (sire_rls * 0.5) + (mgs_rls * 0.25) + (mggs_rls * 0.125) + (float(mean['rearlegssideview']) * 0.125)
+        pa_rlr = (sire_rlr * 0.5) + (mgs_rlr * 0.25) + (mggs_rlr * 0.125) + (float(mean['rearlegsrearview']) * 0.125)
+        pa_fa = (sire_fa * 0.5) + (mgs_fa * 0.25) + (mggs_fa * 0.125) + (float(mean['footangle']) * 0.125)
+        pa_fls = (sire_fls * 0.5) + (mgs_fls * 0.25) + (mggs_fls * 0.125) + (float(mean['feetandlegsscore']) * 0.125)
+        pa_fu = (sire_fu * 0.5) + (mgs_fu * 0.25) + (mggs_fu * 0.125) + (float(mean['foreudderattachement']) * 0.125)
+        pa_uh = (sire_uh * 0.5) + (mgs_uh * 0.25) + (mggs_uh * 0.125) + (float(mean['rearudderheight']) * 0.125)
+        pa_uw = (sire_uw * 0.5) + (mgs_uw * 0.25) + (mggs_uw * 0.125) + (float(mean['rearudderwidth']) * 0.125)
+        pa_uc = (sire_uc * 0.5) + (mgs_uc * 0.25) + (mggs_uc * 0.125) + (float(mean['uddercleft']) * 0.125)
+        pa_ud = (sire_ud * 0.5) + (mgs_ud * 0.25) + (mggs_ud * 0.125) + (float(mean['udderdepth']) * 0.125)
+        pa_ftp = (sire_ftp * 0.5) + (mgs_ftp * 0.25) + (mggs_ftp * 0.125) + (float(mean['frontteatplacement']) * 0.125)
+        pa_rtp = (sire_rtp * 0.5) + (mgs_rtp * 0.25) + (mggs_rtp * 0.125) + (float(mean['rearteatplacement']) * 0.125)
+        pa_tl = (sire_tl * 0.5) + (mgs_tl * 0.25) + (mggs_tl * 0.125) + (float(mean['teatlength']) * 0.125)
+
+        return pa_tpi,pa_nm,pa_cm,pa_efi,pa_milk,pa_fat,pa_pro,pa_fatp,pa_prop,pa_fe,pa_fsav,pa_scs,pa_pl,pa_hliv,pa_liv,pa_dpr,pa_hcr,pa_ccr,pa_fi,pa_mast,pa_metr,pa_retp,pa_keto,pa_da,pa_mfev,pa_ht,pa_efc,pa_sce,pa_ssb,pa_ptat,pa_udc,pa_flc,pa_bsc,pa_dc,pa_st,pa_sr,pa_bd,pa_df,pa_ra,pa_tw,pa_rls,pa_rlr,pa_fa,pa_fls,pa_fu,pa_uh,pa_uw,pa_uc,pa_ud,pa_ftp,pa_rtp,pa_tl
+
+    pa_tpi,pa_nm,pa_cm,pa_efi,pa_milk,pa_fat,pa_pro,pa_fatp,pa_prop,pa_fe,pa_fsav,pa_scs,pa_pl,pa_hliv,pa_liv,pa_dpr,pa_hcr,pa_ccr,pa_fi,pa_mast,pa_metr,pa_retp,pa_keto,pa_da,pa_mfev,pa_ht,pa_efc,pa_sce,pa_ssb,pa_ptat,pa_udc,pa_flc,pa_bsc,pa_dc,pa_st,pa_sr,pa_bd,pa_df,pa_ra,pa_tw,pa_rls,pa_rlr,pa_fa,pa_fls,pa_fu,pa_uh,pa_uw,pa_uc,pa_ud,pa_ftp,pa_rtp,pa_tl = parent_average(sire_tpi,sire_nm,sire_cm,sire_efi,sire_milk,sire_fat,sire_pro,sire_fat_p,sire_pro_p,sire_fe,sire_fsav,sire_scs,sire_pl,sire_hliv,sire_liv,sire_dpr,sire_hcr,sire_ccr,sire_fi,sire_mast,sire_metr,sire_retp,sire_keto,sire_da,sire_mfev,sire_ht,sire_gl,sire_efc,sire_sce,sire_ssb,sire_ptat,sire_udc,sire_flc,sire_bsc,sire_dc,sire_st,sire_sr,sire_bd,sire_df,sire_ra,sire_tw,sire_rls,sire_rlr,sire_fa,sire_fls,sire_fu,sire_uh,sire_uw,sire_uc,sire_ud,sire_ftp,sire_rtp,sire_tl,mgs_tpi,mgs_nm,mgs_cm,mgs_efi,mgs_milk,mgs_fat,mgs_pro,mgs_fat_p,mgs_pro_p,mgs_fe,mgs_fsav,mgs_scs,mgs_pl,mgs_hliv,mgs_liv,mgs_dpr,mgs_hcr,mgs_ccr,mgs_fi,mgs_mast,mgs_metr,mgs_retp,mgs_keto,mgs_da,mgs_mfev,mgs_ht,mgs_gl,mgs_efc,mgs_sce,mgs_ssb,mgs_ptat,mgs_udc,mgs_flc,mgs_bsc,mgs_dc,mgs_st,mgs_sr,mgs_bd,mgs_df,mgs_ra,mgs_tw,mgs_rls,mgs_rlr,mgs_fa,mgs_fls,mgs_fu,mgs_uh,mgs_uw,mgs_uc,mgs_ud,mgs_ftp,mgs_rtp,mgs_tl,mggs_tpi,mggs_nm,mggs_cm,mggs_efi,mggs_milk,mggs_fat,mggs_pro,mggs_fat_p,mggs_pro_p,mggs_fe,mggs_fsav,mggs_scs,mggs_pl,mggs_hliv,mggs_liv,mggs_dpr,mggs_hcr,mggs_ccr,mggs_fi,mggs_mast,mggs_metr,mggs_retp,mggs_keto,mggs_da,mggs_mfev,mggs_ht,mggs_gl,mggs_efc,mggs_sce,mggs_ssb,mggs_ptat,mggs_udc,mggs_flc,mggs_bsc,mggs_dc,mggs_st,mggs_sr,mggs_bd,mggs_df,mggs_ra,mggs_tw,mggs_rls,mggs_rlr,mggs_fa,mggs_fls,mggs_fu,mggs_uh,mggs_uw,mggs_uc,mggs_ud,mggs_ftp,mggs_rtp,mggs_tl)
+
+    pta_gl = (sire_gl * 0.5) + (mgs_gl * 0.25) + (mggs_gl * 0.125) + (float(mean['durationpregnancy']) * 0.125)
+    pta_bcs = (sire_bcs * 0.5) + (mgs_bcs * 0.25) + (mggs_bcs * 0.125) + (float(mean['bodyconditionscore']) * 0.125)
+    pta_ms = (sire_ms * 0.5) + (mgs_ms * 0.25) + (mggs_ms * 0.125) + (float(mean['milkingspeed']) * 0.125)
+    pta_mt = (sire_mt * 0.5) + (mgs_mt * 0.25) + (mggs_mt * 0.125) + (float(mean['milkingtemperament']) * 0.125)
+
+    #criado o sistema de logica:
+    #se o valor predito pela IA desviar muito do calculo convencional, usa-se dai o calculo convencional
+    pta_tpi = round(float(pta_tpi if abs(pta_tpi - pa_tpi) < 200 else pa_tpi), 0)
+    pta_nm = round(float(pta_nm if abs(pta_nm - pa_nm) < 150 else pa_nm), 0)
+    pta_cm = round(float(pta_cm if abs(pta_cm - pa_cm) < 150 else pa_cm), 0)
+    pta_efi = round(float(pta_efi if abs(pta_efi - pa_efi) < 2 else pa_efi), 0)
+    pta_milk = round(float(pta_milk if abs(pta_milk - pa_milk) < 350 else pa_milk), 0)
+    pta_fat = round(float(pta_fat if abs(pta_fat - pa_fat) < 40 else pa_fat), 0)
+    pta_pro = round(float(pta_pro if abs(pta_pro - pa_pro) < 30 else pa_pro), 0)
+    pta_fatp = round(float(pta_fatp if abs(pta_fatp - pa_fatp) < 0.1 else pa_fatp), 2)
+    pta_prop = round(float(pta_prop if abs(pta_prop - pa_prop) < 0.1 else pa_prop), 2)
+    pta_fe = round(float(pta_fe if abs(pta_fe - pa_fe) < 150 else pa_fe), 0)
+    pta_fsav = round(float(pta_fsav if abs(pta_fsav - pa_fsav) < 150 else pa_fsav), 0)
+    pta_scs = round(float(pta_scs if abs(pta_scs - pa_scs) < 0.2 else pa_scs), 2)
+    pta_pl = round(float(pta_pl if abs(pta_pl - pa_pl) < 200 else pa_pl), 2)
+    pta_hliv = round(float(pta_hliv if abs(pta_hliv - pa_hliv) < 1.5 else pa_hliv), 2)
+    pta_liv = round(float(pta_liv if abs(pta_liv - pa_liv) < 1.5 else pa_liv), 2)
+    pta_dpr = round(float(pta_dpr if abs(pta_dpr - pa_dpr) < 1.5 else pa_dpr), 2)
+    pta_hcr = round(float(pta_hcr if abs(pta_hcr - pa_hcr) < 1.5 else pa_hcr), 2)
+    pta_ccr = round(float(pta_ccr if abs(pta_ccr - pa_ccr) < 1.5 else pa_ccr), 2)
+    pta_fi = round(float(pta_fi if abs(pta_fi - pa_fi) < 1.5 else pa_fi), 2)
+    pta_mast = round(float(pta_mast if abs(pta_mast - pa_mast) < 1.5 else pa_mast), 2)
+    pta_metr = round(float(pta_metr if abs(pta_metr - pa_metr) < 1.5 else pa_metr), 2)
+    pta_retp = round(float(pta_retp if abs(pta_retp - pa_retp) < 1.5 else pa_retp), 2)
+    pta_keto = round(float(pta_keto if abs(pta_keto - pa_keto) < 1.5 else pa_keto), 2)
+    pta_da = round(float(pta_da if abs(pta_da - pa_da) < 1.5 else pa_da), 2)
+    pta_mfev = round(float(pta_mfev if abs(pta_mfev - pa_mfev) < 1.5 else pa_mfev), 2)
+    pta_ht = round(float(pta_ht if abs(pta_ht - pa_ht) < 1.5 else pa_ht), 2)
+    pta_efc = round(float(pta_efc if abs(pta_efc - pa_efc) < 1.5 else pa_efc), 2)
+    pta_sce = round(float(pta_sce if abs(pta_sce - pa_sce) < 1.5 else pa_sce), 2)
+    pta_ssb = round(float(pta_ssb if abs(pta_ssb - pa_ssb) < 1.5 else pa_ssb), 2)
+    pta_ptat = round(float(pta_ptat if abs(pta_ptat - pa_ptat) < 1.5 else pa_ptat), 2)
+    pta_udc = round(float(pta_udc if abs(pta_udc - pa_udc) < 1.5 else pa_udc), 2)
+    pta_flc = round(float(pta_flc if abs(pta_flc - pa_flc) < 1.5 else pa_flc), 2)
+    pta_bsc = round(float(pta_bsc if abs(pta_bsc - pa_bsc) < 1.5 else pa_bsc), 2)
+    pta_dc = round(float(pta_dc if abs(pta_dc - pa_dc) < 1.5 else pa_dc), 2)
+    pta_st = round(float(pta_st if abs(pta_st - pa_st) < 1.5 else pa_st), 2)
+    pta_sr = round(float(pta_sr if abs(pta_sr - pa_sr) < 1.5 else pa_sr), 2)
+    pta_bd = round(float(pta_bd if abs(pta_bd - pa_bd) < 1.5 else pa_bd), 2)
+    pta_df = round(float(pta_df if abs(pta_df - pa_df) < 1.5 else pa_df), 2)
+    pta_ra = round(float(pta_ra if abs(pta_ra - pa_ra) < 1.5 else pa_ra), 2)
+    pta_tw = round(float(pta_tw if abs(pta_tw - pa_tw) < 1.5 else pa_tw), 2)
+    pta_rls = round(float(pta_rls if abs(pta_rls - pa_rls) < 1.5 else pa_rls), 2)
+    pta_rlr = round(float(pta_rlr if abs(pta_rlr - pa_rlr) < 1.5 else pa_rlr), 2)
+    pta_fa = round(float(pta_fa if abs(pta_fa - pa_fa) < 1.5 else pa_fa), 2)
+    pta_fls = round(float(pta_fls if abs(pta_fls - pa_fls) < 1.5 else pa_fls), 2)
+    pta_fu = round(float(pta_fu if abs(pta_fu - pa_fu) < 1.5 else pa_fu), 2)
+    pta_uh = round(float(pta_uh if abs(pta_uh - pa_uh) < 1.5 else pa_uh), 2)
+    pta_uw = round(float(pta_uw if abs(pta_uw - pa_uw) < 1.5 else pa_uw), 2)
+    pta_uc = round(float(pta_uc if abs(pta_uc - pa_uc) < 1.5 else pa_uc), 2)
+    pta_ud = round(float(pta_ud if abs(pta_ud - pa_ud) < 1.5 else pa_ud), 2)
+    pta_ftp = round(float(pta_ftp if abs(pta_ftp - pa_ftp) < 1.5 else pa_ftp), 2)
+    pta_rtp = round(float(pta_rtp if abs(pta_rtp - pa_rtp) < 1.5 else pa_rtp), 2)
+    pta_tl = round(float(pta_tl if abs(pta_tl - pa_tl) < 1.5 else pa_tl), 2)
+    pta_gl = round(float(pta_gl),0)
+    pta_bcs = round(float(pta_bcs),0)
+    pta_ms = round(float(pta_ms),0)
+    pta_mt = round(float(pta_mt),0)
+
+    # PEGA O FINAL DA EXECUÇÃO
+    fim = time.time()
+
+    # RETORNO DAS PREDICOES COMO JSON
+    json_formatted_str = json.dumps({
+        'sucesso': True,
+        'tempo_execucao': fim - inicio,
+        'tpi': pta_tpi,
+        'nm': pta_nm,
+        'cm': pta_cm,
+        'efi': pta_efi,
+        'milk': pta_milk,
+        'fat': pta_fat,
+        'pro': pta_pro,
+        'fat_p': pta_fatp,
+        'pro_p': pta_prop,
+        'fe': pta_fe,
+        'fsav': pta_fsav,
+        'scs': pta_scs,
+        'pl': pta_pl,
+        'hliv': pta_hliv,
+        'liv': pta_liv,
+        'dpr': pta_dpr,
+        'hcr': pta_hcr,
+        'ccr': pta_ccr,
+        'fi': pta_fi,
+        'mast': pta_mast,
+        'metr': pta_metr,
+        'retp': pta_retp,
+        'keto': pta_keto,
+        'da': pta_da,
+        'mfev': pta_mfev,
+        'ht': pta_ht,
+        'gl': pta_gl,
+        'efc': pta_efc,
+        'sce': pta_sce,
+        'ssb': pta_ssb,
+        'ptat': pta_ptat,
+        'udc': pta_udc,
+        'flc': pta_flc,
+        'bsc': pta_bsc,
+        'dc': pta_dc,
+        'st': pta_st,
+        'sr': pta_sr,
+        'bd': pta_bd,
+        'df': pta_df,
+        'ra': pta_ra,
+        'tw': pta_tw,
+        'rls': pta_rls,
+        'rlr': pta_rlr,
+        'fa': pta_fa,
+        'fls': pta_fls,
+        'fu': pta_fu,
+        'uh': pta_uh,
+        'uw': pta_uw,
+        'uc': pta_uc,
+        'ud': pta_ud,
+        'ftp': pta_ftp,
+        'rtp': pta_rtp,
+        'tl': pta_tl
+    }, indent=2)
+
+    print(json_formatted_str)
+
+    sql = """UPDATE matriz
+                SET status_processamento = %s,
+                    tempo_execucao = %s,
+                    tpi = %s,
+                    lifetimenetmerit = %s,
+                    lifetimecheesemerit = %s,
+                    expectedfutureinbreeding = %s,
+                    milk = %s,
+                    fat = %s,
+                    fatpercent = %s,
+                    protein = %s,
+                    proteinpercent = %s,
+                    productionefficiency = %s,
+                    feedsaved = %s,
+                    somaticcellscore = %s,
+                    productivelife = %s,
+                    heiferlivability = %s,
+                    cowlivability = %s,
+                    daughterpregnancyrate = %s,
+                    heiferconceptionrate = %s,
+                    cowconceptionrate = %s,
+                    fertilityandfitness = %s,
+                    cdcbmastitis = %s,
+                    cdcbmetritis = %s,
+                    cdcbretainedplacenta = %s,
+                    cdcbketosis = %s,
+                    cdcbdisplacedabomasum = %s,
+                    cdcbhypocaicemia = %s,
+                    health = %s,
+                    sirecalvingease = %s,
+                    sirestillbirth = %s,
+                    durationpregnancy = %s,
+                    agefirstchildbirth = %s,
+                    predictedtransmittingabilitytype = %s,
+                    uddercomposite = %s,
+                    feetandlegcomposite = %s,
+                    bodysizecomposite = %s,
+                    dairycomposite = %s,
+                    stature = %s,
+                    strength = %s,
+                    bodydepth = %s,
+                    dairyform = %s,
+                    rumpangle = %s,
+                    thurlwidth = %s,
+                    rearlegssideview = %s,
+                    rearlegsrearview = %s,
+                    footangle = %s,
+                    feetandlegsscore = %s,
+                    foreudderattachement = %s,
+                    rearudderheight = %s,
+                    rearudderwidth = %s,
+                    uddercleft = %s,
+                    udderdepth = %s,
+                    frontteatplacement = %s,
+                    rearteatplacement = %s,
+                    teatlength = %s,
+                    data_alterado = now(),
+                    alterado_por = criado_por
+              WHERE uuid = %s"""
+
+    cursor.execute(sql, (
+        '2',
+        (fim - inicio),
+        pta_tpi,
+        pta_nm,
+        pta_cm,
+        pta_efi,
+        pta_milk,
+        pta_fat,
+        pta_fatp,
+        pta_pro,
+        pta_prop,
+        pta_fe,
+        pta_fsav,
+        pta_scs,
+        pta_pl,
+        pta_hliv,
+        pta_liv,
+        pta_dpr,
+        pta_hcr,
+        pta_ccr,
+        pta_fi,
+        pta_mast,
+        pta_metr,
+        pta_retp,
+        pta_keto,
+        pta_da,
+        pta_mfev,
+        pta_ht,
+        pta_sce,
+        pta_ssb,
+        pta_gl,
+        pta_efc,
+        pta_ptat,
+        pta_udc,
+        pta_flc,
+        pta_bsc,
+        pta_dc,
+        pta_st,
+        pta_sr,
+        pta_bd,
+        pta_df,
+        pta_ra,
+        pta_tw,
+        pta_rls,
+        pta_rlr,
+        pta_fa,
+        pta_fls,
+        pta_fu,
+        pta_uh,
+        pta_uw,
+        pta_uc,
+        pta_ud,
+        pta_ftp,
+        pta_rtp,
+        pta_tl,
+        uuid
+    ))
+
+    conn.commit()
+
+    cursor.close()
+
+    conn.close()
+
+    # INVOCA O LAMBDA DO PDF
+    if 'LAMBDA_PDF' in os.environ:
+        lambda_client.invoke(FunctionName = os.environ['LAMBDA_PDF'], InvocationType = 'Event', Payload = json.dumps({"batch": batch, "matrix_uuid": uuid, "type": "prediction"}))
+
+    return True
+
+# PERMITE CHAMAR QUALQUER FUNÇÃO POR LINHA DE COMANDO
+if __name__ == '__main__':
+    globals()[sys.argv[1]]()
