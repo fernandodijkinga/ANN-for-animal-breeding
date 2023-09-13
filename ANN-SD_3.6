@@ -1,0 +1,1939 @@
+#IMPORTAR PACOTES E BIBLIOTECAS
+import os 
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+
+import tensorflow as tf
+from sklearn.preprocessing import MinMaxScaler
+import pandas as pd
+import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
+import time
+import sys
+import json
+import psycopg2 as pg
+import psycopg2.extras
+import boto3
+
+lambda_client = boto3.client('lambda', region_name='us-west-1')
+
+# FUNÇÃO INICIAL DE CHAMADA DO LAMBDA
+def lambda_handler(event, context):
+    # PERCORRE AS MENSAGENS DA FILA
+    for queue in event['Records']:
+
+        # PERCORRE OS ACASALAMENTOS COLOCADOS NA FILA
+        for value in json.loads(queue['body'])['Records']:
+            print("Client CODE: " + value['client_code'])
+            print("Mating CODE: " + value['mating_code'])
+            print("Matrix UUID: " + value['matrix_uuid'])
+            print("User CODE: " + value['user_code'])
+
+            # EFETUA A PREDIÇÃO
+            mating(value)
+
+# FUNÇÃO DE DEBUG LOCAL - COMANDO: python app.py debug
+def debug():
+    # PARA UTILIZAR O DEBUG OS VALORES A BAIXO JÁ ESTÃO PRÉ CONFIGURADOS PARA GERAR
+    # É POSSÍVEL MUDAR OS VALORES PARA TROCAR OS FILTROS CONFORME TESTE DESEJADO, OBSERVAR VALORES VÁLIDOS
+    print("Iniciando em modo debug")
+
+    # MONTA O ARRAY DE DADOS TESTE
+    data = {}
+
+    # CÓDIGO DO CLIENTE - PEGAR CÓDIGO NO SISTEMA
+    data["client_code"] = "684"
+
+    # CÓDIGO DA PROPRIEDADE - PEGAR CÓDIGO DE UMA PROPRIEDADE DO CLIENTE
+    data["mating_code"] = "1"
+
+    # CÓDIGO UNICO DA MATRIZ - PEGAR CÓDIGO DE UMA MATRIZ DO CLIENTE/PROPRIEDADE
+    data["matrix_uuid"] = "9adb4be9-63cd-4f75-983a-4c51d969f269"
+
+    # CÓDIGO DO USUÁRIO - PEGAR CÓDIGO NO SISTEMA
+    data["user_code"] = "2"
+
+    # 1 - TODOS OS TOUROS
+    # 2 - ESTOQUE SÊMEN
+    # 3 - FORNECEDORES
+    # 4 - ACASALAMENTO DIRECIONADO
+    # 5 - CATALOGO INTERCOOPERAÇÃO
+    data["bull_filter"] = "1"
+
+    # FILTRO DE FORNECEDOR - SEPARAR POR VÍRGULA
+    data["bull_supplier_code"] = "AGBRASIL,SEMEX,GENEX"
+
+    # FILTRO DE ACASALAMENTO DIRECIONADO - CÓDIGO NAAB
+    data["bull_code"] = "014HO15971"
+
+    # FILTRO DO CATÁLOGO DE INTERCOOPERAÇÃO - PEGAR CÓDIGO NO SISTEMA
+    data["intercooperation_code"] = "1"
+
+    # FILTRO DA BETA CASEINA - A2A2
+    data["bull_filter_betacasein"] = ""
+
+    # FILTRO DA COR DO TOURO - 1 OU 2
+    data["bull_filter_color"] = "2"
+
+    mating(data)
+
+# FUNÇÃO QUE EFETUA O ACASALAMENTO
+def mating(data):
+    # PEGA O INÍCIO DA EXECUÇÃO
+    inicio = time.time()
+
+    # CONEXÃO COM A BASE DE DADOS
+    print("Conectando a Database: " + os.environ['PG_DATABASE'])
+    conn = pg.connect(database=os.environ['PG_DATABASE'], host=os.environ['PG_HOST'], user=os.environ['PG_USER'], password=os.environ['PG_PASS'], port=os.environ['PG_PORT'])
+    cursor = conn.cursor(cursor_factory=pg.extras.DictCursor)
+
+    # VERIFICA SE ENCONTROU O FILTRO INFORMADO NA BASE DE DADOS
+    if "weight_tpi" in data:
+        # PESOS A CARACTERISTICAS - PESO DADO A CARACTERÍSTICA
+        weight_tpi = float(data['weight_tpi'])
+        weight_nm = float(data['weight_nm'])
+        weight_cm = float(data['weight_cm'])
+        weight_milk = float(data['weight_milk'])
+        weight_fat = float(data['weight_fat'])
+        weight_pro = float(data['weight_pro'])
+        weight_fe = float(data['weight_fe'])
+        weight_fsav = float(data['weight_fsav'])
+        weight_scs = float(data['weight_scs'])
+        weight_pl = float(data['weight_pl'])
+        weight_liv = float(data['weight_liv'])
+        weight_dpr = float(data['weight_dpr'])
+        weight_ht = float(data['weight_ht'])
+        weight_ptat = float(data['weight_ptat'])
+        weight_udc = float(data['weight_udc'])
+        weight_flc = float(data['weight_flc'])
+        weight_dc = float(data['weight_dc'])
+
+        # FILTROS DE PROGENIES - CONTROLE DE COMO A PROGENIE IRÁ NASCER
+        min_tpi, max_tpi = float(data['min_tpi']), float(data['max_tpi'])
+        min_nm, max_nm = float(data['min_nm']), float(data['max_nm'])
+        min_cm, max_cm = float(data['min_cm']), float(data['max_cm'])
+        min_efi, max_efi = float(data['min_efi']), float(data['max_efi'])
+        min_milk, max_milk = float(data['min_milk']), float(data['max_milk'])
+        min_fat, max_fat = float(data['min_fat']), float(data['max_fat'])
+        min_pro, max_pro = float(data['min_pro']), float(data['max_pro'])
+        min_fatp, max_fatp = float(data['min_fatp']), float(data['max_fatp'])
+        min_prop, max_prop = float(data['min_prop']), float(data['max_prop'])
+        min_fe, max_fe = float(data['min_fe']), float(data['max_fe'])
+        min_fsav, max_fsav = float(data['min_fsav']), float(data['max_fsav'])
+        min_scs, max_scs = float(data['min_scs']), float(data['max_scs'])
+        min_pl, max_pl = float(data['min_pl']), float(data['max_pl'])
+        min_hliv, max_hliv = float(data['min_hliv']), float(data['max_hliv'])
+        min_liv, max_liv = float(data['min_liv']), float(data['max_liv'])
+        min_dpr, max_dpr = float(data['min_dpr']), float(data['max_dpr'])
+        min_hcr, max_hcr = float(data['min_hcr']), float(data['max_hcr'])
+        min_ccr, max_ccr = float(data['min_ccr']), float(data['max_ccr'])
+        min_fi, max_fi = float(data['min_fi']), float(data['max_fi'])
+        min_mast, max_mast = float(data['min_mast']), float(data['max_mast'])
+        min_metr, max_metr = float(data['min_metr']), float(data['max_metr'])
+        min_retp, max_retp = float(data['min_retp']), float(data['max_retp'])
+        min_keto, max_keto = float(data['min_keto']), float(data['max_keto'])
+        min_da, max_da = float(data['min_da']), float(data['max_da'])
+        min_mfev, max_mfev = float(data['min_mfev']), float(data['max_mfev'])
+        min_ht, max_ht = float(data['min_ht']), float(data['max_ht'])
+        min_gl, max_gl = float(data['min_gl']), float(data['max_gl'])
+        min_efc, max_efc = float(data['min_efc']), float(data['max_efc'])
+        min_sce, max_sce = float(data['min_sce']), float(data['max_sce'])
+        min_ssb, max_ssb = float(data['min_ssb']), float(data['max_ssb'])
+        min_ptat, max_ptat = float(data['min_ptat']), float(data['max_ptat'])
+        min_udc, max_udc = float(data['min_udc']), float(data['max_udc'])
+        min_flc, max_flc = float(data['min_flc']), float(data['max_flc'])
+        min_bsc, max_bsc = float(data['min_bsc']), float(data['max_bsc'])
+        min_dc, max_dc = float(data['min_dc']), float(data['max_dc'])
+        min_st, max_st = float(data['min_st']), float(data['max_st'])
+        min_sr, max_sr = float(data['min_sr']), float(data['max_sr'])
+        min_bd, max_bd = float(data['min_bd']), float(data['max_bd'])
+        min_df, max_df = float(data['min_df']), float(data['max_df'])
+        min_ra, max_ra = float(data['min_ra']), float(data['max_ra'])
+        min_tw, max_tw = float(data['min_tw']), float(data['max_tw'])
+        min_rls, max_rls = float(data['min_rls']), float(data['max_rls'])
+        min_rlr, max_rlr = float(data['min_rlr']), float(data['max_rlr'])
+        min_fa, max_fa = float(data['min_fa']), float(data['max_fa'])
+        min_fls, max_fls = float(data['min_fls']), float(data['max_fls'])
+        min_fu, max_fu = float(data['min_fu']), float(data['max_fu'])
+        min_uh, max_uh = float(data['min_uh']), float(data['max_uh'])
+        min_uw, max_uw = float(data['min_uw']), float(data['max_uw'])
+        min_uc, max_uc = float(data['min_uc']), float(data['max_uc'])
+        min_ud, max_ud = float(data['min_ud']), float(data['max_ud'])
+        min_ftp, max_ftp = float(data['min_ftp']), float(data['max_ftp'])
+        min_rtp, max_rtp = float(data['min_rtp']), float(data['max_rtp'])
+        min_tl, max_tl = float(data['min_tl']), float(data['max_tl'])
+    else:
+        # PESOS A CARACTERISTICAS - PESO DADO A CARACTERÍSTICA
+        weight_tpi = 1
+        weight_nm = 1
+        weight_cm = 1
+        weight_milk = 1
+        weight_fat = 1
+        weight_pro = 1
+        weight_fe = 1
+        weight_fsav = 1
+        weight_scs = 1
+        weight_pl = 1
+        weight_liv = 1
+        weight_dpr = 1
+        weight_ht = 1
+        weight_ptat = 1
+        weight_udc = 1
+        weight_flc = 1
+        weight_dc = 1
+
+        # FILTROS DE PROGENIES - CONTROLE DE COMO A PROGENIE IRÁ NASCER
+        min_tpi, max_tpi = 0, 3500
+        min_nm, max_nm = -2000, 2000
+        min_cm, max_cm = -2000, 2000
+        min_efi, max_efi = 0, 20
+        min_milk, max_milk = -5000, 5000
+        min_fat, max_fat = -200, 200
+        min_pro, max_pro = -200, 200
+        min_fatp, max_fatp = -1, 1
+        min_prop, max_prop = -1, 1
+        min_fe, max_fe = -500, 500
+        min_fsav, max_fsav = -500, 500
+        min_scs, max_scs = 2, 3.5
+        min_pl, max_pl = -10, 10
+        min_hliv, max_hliv = -10, 10
+        min_liv, max_liv = -10, 10
+        min_dpr, max_dpr = -10, 10
+        min_hcr, max_hcr = -10, 10
+        min_ccr, max_ccr = -10, 10
+        min_fi, max_fi = -10, 10
+        min_mast, max_mast = -10, 10
+        min_metr, max_metr = -10, 10
+        min_retp, max_retp = -10, 10
+        min_keto, max_keto = -10, 10
+        min_da, max_da = -10, 10
+        min_mfev, max_mfev = -10, 10
+        min_ht, max_ht = -10, 10
+        min_gl, max_gl = -10, 10
+        min_efc, max_efc = -10, 10
+        min_sce, max_sce = 0, 10
+        min_ssb, max_ssb = 0, 10
+        min_ptat, max_ptat = -5, 5
+        min_udc, max_udc = -5, 5
+        min_flc, max_flc = -5, 5
+        min_bsc, max_bsc = -5, 5
+        min_dc, max_dc = -5, 5
+        min_st, max_st = -5, 5
+        min_sr, max_sr = -5, 5
+        min_bd, max_bd = -5, 5
+        min_df, max_df = -5, 5
+        min_ra, max_ra = -5, 5
+        min_tw, max_tw = -5, 5
+        min_rls, max_rls = -5, 5
+        min_rlr, max_rlr = -5, 5
+        min_fa, max_fa = -5, 5
+        min_fls, max_fls = -5, 5
+        min_fu, max_fu = -5, 5
+        min_uh, max_uh = -5, 5
+        min_uw, max_uw = -5, 5
+        min_uc, max_uc = -5, 5
+        min_ud, max_ud = -5, 5
+        min_ftp, max_ftp = -5, 5
+        min_rtp, max_rtp = -5, 5
+        min_tl, max_tl = -5, 5
+
+    # IMPORTAR MODELOS TREINADOS
+    model_TPI = tf.keras.models.load_model('model_h5/model_ANNSD_TPI.h5')
+    model_NM = tf.keras.models.load_model('model_h5/model_ANNSD_NM.h5')
+    model_CM = tf.keras.models.load_model('model_h5/model_ANNSD_CM.h5')
+    model_EFI = tf.keras.models.load_model('model_h5/model_ANNSD_GEFI.h5')
+    model_MILK = tf.keras.models.load_model('model_h5/model_ANNSD_MILK.h5')
+    model_FAT = tf.keras.models.load_model('model_h5/model_ANNSD_FAT.h5')
+    model_PRO = tf.keras.models.load_model('model_h5/model_ANNSD_PRO.h5')
+    model_FATP = tf.keras.models.load_model('model_h5/model_ANNSD_FAT_P.h5')
+    model_PROP = tf.keras.models.load_model('model_h5/model_ANNSD_PRO_P.h5')
+    model_FE = tf.keras.models.load_model('model_h5/model_ANNSD_FE.h5')
+    model_FSAV = tf.keras.models.load_model('model_h5/model_ANNSD_FSAV.h5')
+    model_SCS = tf.keras.models.load_model('model_h5/model_ANNSD_SCS.h5')
+    model_PL = tf.keras.models.load_model('model_h5/model_ANNSD_PL.h5')
+    model_HLIV = tf.keras.models.load_model('model_h5/model_ANNSD_HLIV.h5')
+    model_LIV = tf.keras.models.load_model('model_h5/model_ANNSD_LIV.h5')
+    model_DPR = tf.keras.models.load_model('model_h5/model_ANNSD_DPR.h5')
+    model_HCR = tf.keras.models.load_model('model_h5/model_ANNSD_HCR.h5')
+    model_CCR = tf.keras.models.load_model('model_h5/model_ANNSD_CCR.h5')
+    model_FI = tf.keras.models.load_model('model_h5/model_ANNSD_FI.h5')
+    model_MAST = tf.keras.models.load_model('model_h5/model_ANNSD_MAST.h5')
+    model_METR = tf.keras.models.load_model('model_h5/model_ANNSD_METR.h5')
+    model_RETP = tf.keras.models.load_model('model_h5/model_ANNSD_RETP.h5')
+    model_KETO = tf.keras.models.load_model('model_h5/model_ANNSD_KETO.h5')
+    model_DA = tf.keras.models.load_model('model_h5/model_ANNSD_DA.h5')
+    model_MFEV = tf.keras.models.load_model('model_h5/model_ANNSD_MFEV.h5')
+    model_HT = tf.keras.models.load_model('model_h5/model_ANNSD_HT.h5')
+    model_SCE = tf.keras.models.load_model('model_h5/model_ANNSD_SCE.h5')
+    model_SSB = tf.keras.models.load_model('model_h5/model_ANNSD_SSB.h5')
+    model_GL = tf.keras.models.load_model('model_h5/model_ANNSD_GL.h5')
+    model_EFC = tf.keras.models.load_model('model_h5/model_ANNSD_EFC.h5')
+    model_PTAT = tf.keras.models.load_model('model_h5/model_ANNSD_PTAT.h5')
+    model_UDC = tf.keras.models.load_model('model_h5/model_ANNSD_UDC.h5')
+    model_FLC = tf.keras.models.load_model('model_h5/model_ANNSD_FLC.h5')
+    model_BSC = tf.keras.models.load_model('model_h5/model_ANNSD_BSC.h5')
+    model_DC = tf.keras.models.load_model('model_h5/model_ANNSD_DC.h5')
+    model_ST = tf.keras.models.load_model('model_h5/model_ANNSD_ST.h5')
+    model_SR = tf.keras.models.load_model('model_h5/model_ANNSD_SR.h5')
+    model_BD = tf.keras.models.load_model('model_h5/model_ANNSD_BD.h5')
+    model_DF = tf.keras.models.load_model('model_h5/model_ANNSD_DF.h5')
+    model_RA = tf.keras.models.load_model('model_h5/model_ANNSD_RA.h5')
+    model_TW = tf.keras.models.load_model('model_h5/model_ANNSD_TW.h5')
+    model_RLS = tf.keras.models.load_model('model_h5/model_ANNSD_RLS.h5')
+    model_RLR = tf.keras.models.load_model('model_h5/model_ANNSD_RLR.h5')
+    model_FA = tf.keras.models.load_model('model_h5/model_ANNSD_FA.h5')
+    model_FLS = tf.keras.models.load_model('model_h5/model_ANNSD_FLS.h5')
+    model_FU = tf.keras.models.load_model('model_h5/model_ANNSD_FU.h5')
+    model_UH = tf.keras.models.load_model('model_h5/model_ANNSD_UH.h5')
+    model_UW = tf.keras.models.load_model('model_h5/model_ANNSD_UW.h5')
+    model_UD = tf.keras.models.load_model('model_h5/model_ANNSD_UD.h5')
+    model_UC = tf.keras.models.load_model('model_h5/model_ANNSD_UC.h5')
+    model_FTP = tf.keras.models.load_model('model_h5/model_ANNSD_FTP.h5')
+    model_RTP = tf.keras.models.load_model('model_h5/model_ANNSD_RTP.h5')
+    model_TL = tf.keras.models.load_model('model_h5/model_ANNSD_TL.h5')
+
+    # SISTEMA DE FILTRAGEM DA MATRIZ ESCOLHIDA
+    cursor.execute('''SELECT matriz_id, 
+                             coalesce(tpi, 0) AS tpi,
+                             coalesce(lifetimenetmerit, 0) AS lifetimenetmerit,
+                             coalesce(lifetimecheesemerit, 0) AS lifetimecheesemerit,
+                             coalesce(expectedfutureinbreeding, 0) AS expectedfutureinbreeding,
+                             coalesce(milk, 0) AS milk,
+                             coalesce(fat, 0) AS fat,
+                             coalesce(protein, 0) AS protein,
+                             coalesce(fatpercent, 0) AS fatpercent,
+                             coalesce(proteinpercent, 0) AS proteinpercent,
+                             coalesce(productionefficiency, 0) AS productionefficiency,
+                             coalesce(feedsaved, 0) AS feedsaved,
+                             coalesce(somaticcellscore, 0) AS somaticcellscore,
+                             coalesce(productivelife, 0) AS productivelife,
+                             coalesce(heiferlivability, 0) AS heiferlivability,
+                             coalesce(cowlivability, 0) AS cowlivability,
+                             coalesce(daughterpregnancyrate, 0) AS daughterpregnancyrate,
+                             coalesce(heiferconceptionrate, 0) AS heiferconceptionrate,
+                             coalesce(cowconceptionrate, 0) AS cowconceptionrate,
+                             coalesce(fertilityandfitness, 0) AS fertilityandfitness,
+                             coalesce(cdcbmastitis, 0) AS cdcbmastitis,
+                             coalesce(cdcbmetritis, 0) AS cdcbmetritis,
+                             coalesce(cdcbretainedplacenta, 0) AS cdcbretainedplacenta,
+                             coalesce(cdcbketosis, 0) AS cdcbketosis,
+                             coalesce(cdcbdisplacedabomasum, 0) AS cdcbdisplacedabomasum,
+                             coalesce(cdcbhypocaicemia, 0) AS cdcbhypocaicemia,
+                             coalesce(daughtercalvingease, 0) AS daughtercalvingease,
+                             coalesce(daughterstillbirth, 0) AS daughterstillbirth,
+                             coalesce(sirecalvingease, 0) AS sirecalvingease,
+                             coalesce(sirestillbirth, 0) AS sirestillbirth,
+                             coalesce(firstdeliveryage, 0) AS firstdeliveryage,
+                             coalesce(durationpregnancy, 0) AS durationpregnancy,
+                             coalesce(predictedtransmittingabilitytype, 0) AS predictedtransmittingabilitytype,
+                             coalesce(uddercomposite, 0) AS uddercomposite,
+                             coalesce(feetandlegcomposite, 0) AS feetandlegcomposite,
+                             coalesce(health, 0) AS health,
+                             coalesce(bodysizecomposite, 0) AS bodysizecomposite,
+                             coalesce(dairycomposite, 0) AS dairycomposite,
+                             coalesce(stature, 0) AS stature,
+                             coalesce(strength, 0) AS strength,
+                             coalesce(bodydepth, 0) AS bodydepth,
+                             coalesce(dairyform, 0) AS dairyform,
+                             coalesce(rumpangle, 0) AS rumpangle,
+                             coalesce(thurlwidth, 0) AS thurlwidth,
+                             coalesce(rearlegssideview, 0) AS rearlegssideview,
+                             coalesce(rearlegsrearview, 0) AS rearlegsrearview,
+                             coalesce(footangle, 0) AS footangle,
+                             coalesce(feetandlegsscore, 0) AS feetandlegsscore,
+                             coalesce(foreudderattachement, 0) AS foreudderattachement,
+                             coalesce(rearudderheight, 0) AS rearudderheight,
+                             coalesce(rearudderwidth, 0) AS rearudderwidth,
+                             coalesce(uddercleft, 0) AS uddercleft,
+                             coalesce(udderdepth, 0) AS udderdepth,
+                             coalesce(frontteatplacement, 0) AS frontteatplacement,
+                             coalesce(rearteatplacement, 0) AS rearteatplacement,
+                             coalesce(teatlength, 0) AS teatlength,
+                             coalesce(naabcode1, '') AS naabcode1,
+                             coalesce(naabcode2, '') AS naabcode2 FROM matriz WHERE uuid = \'''' + data['matrix_uuid'] + '\'')
+    dam = cursor.fetchone()
+
+    # MAPEAMENTO DOS CAMPOS DA MATRIZ
+    dam_TPI = int(dam['tpi'])
+    dam_NM = float(dam['lifetimenetmerit'])
+    dam_CM = float(dam['lifetimecheesemerit'])
+    dam_EFI = float(dam['expectedfutureinbreeding'])
+    dam_MILK = int(dam['milk'])
+    dam_FAT = int(dam['fat'])
+    dam_PRO = int(dam['protein'])
+    dam_FAT_P = float(dam['fatpercent'])
+    dam_PRO_P = float(dam['proteinpercent'])
+    dam_FE = int(dam['productionefficiency'])
+    dam_FSAV = int(dam['feedsaved'])
+    dam_SCS = float(dam['somaticcellscore'])
+    dam_PL = float(dam['productivelife'])
+    dam_HLIV = float(dam['heiferlivability'])
+    dam_LIV = float(dam['cowlivability'])
+    dam_DPR = float(dam['daughterpregnancyrate'])
+    dam_HCR = float(dam['heiferconceptionrate'])
+    dam_CCR = float(dam['cowconceptionrate'])
+    dam_FI = float(dam['fertilityandfitness'])
+    dam_MAST = float(dam['cdcbmastitis'])
+    dam_METR = float(dam['cdcbmetritis'])
+    dam_RETP = float(dam['cdcbretainedplacenta'])
+    dam_KETO = float(dam['cdcbketosis'])
+    dam_DA = float(dam['cdcbdisplacedabomasum'])
+    dam_MFEV = float(dam['cdcbhypocaicemia'])
+    dam_DCE = float(dam['daughtercalvingease'])
+    dam_DSB = float(dam['daughterstillbirth'])
+    dam_SCE = float(dam['sirecalvingease'])
+    dam_SSB = float(dam['sirestillbirth'])
+    dam_EFC = float(dam['firstdeliveryage'])
+    dam_GL = float(dam['durationpregnancy'])
+    dam_PTAT = float(dam['predictedtransmittingabilitytype'])
+    dam_UDC = float(dam['uddercomposite'])
+    dam_FLC = float(dam['feetandlegcomposite'])
+    dam_HT = float(dam['health'])
+    dam_BSC = float(dam['bodysizecomposite'])
+    dam_DC = float(dam['dairycomposite'])
+    dam_ST = float(dam['stature'])
+    dam_SR = float(dam['strength'])
+    dam_BD = float(dam['bodydepth'])
+    dam_DF = float(dam['dairyform'])
+    dam_RA = float(dam['rumpangle'])
+    dam_TW = float(dam['thurlwidth'])
+    dam_RLS = float(dam['rearlegssideview'])
+    dam_RLR = float(dam['rearlegsrearview'])
+    dam_FA = float(dam['footangle'])
+    dam_FLS = float(dam['feetandlegsscore'])
+    dam_FU = float(dam['foreudderattachement'])
+    dam_UH = float(dam['rearudderheight'])
+    dam_UW = float(dam['rearudderwidth'])
+    dam_UC = float(dam['uddercleft'])
+    dam_UD = float(dam['udderdepth'])
+    dam_FTP = float(dam['frontteatplacement'])
+    dam_RTP = float(dam['rearteatplacement'])
+    dam_TL = float(dam['teatlength'])
+    dam_NAABSIRE = (dam['naabcode1'])
+    dam_NAABMGS = (dam['naabcode2'])
+
+    # ENDOGAMIA - VACA NAO PODE ACASALAR COM PARENTES PROXIMOS
+    dam_NAABSIRE = (np.array(dam_NAABSIRE))
+    dam_NAABSIRE = str(dam_NAABSIRE).replace("['","").replace("']","")
+
+    dam_NAABMGS = (np.array(dam_NAABMGS))
+    dam_NAABMGS = str(dam_NAABMGS).replace("['","").replace("']","")
+
+    cursor.execute('''SELECT coalesce(longname, '') AS longname,
+                             coalesce(sire, '') AS sire,
+                             coalesce(mgs, '') AS mgs,
+                             coalesce(pgs, '') AS pgs,
+                             coalesce(hh1, '0') AS hh1,
+                             coalesce(hh2, '0') AS hh2,
+                             coalesce(hh3, '0') AS hh3,
+                             coalesce(hh4, '0') AS hh4,
+                             coalesce(hh5, '0') AS hh5,
+                             coalesce(hh6, '0') AS hh6,
+                             coalesce(hh0, '0') AS hh0,
+                             coalesce(hhc, '0') AS hhc,
+                             coalesce(hcd, '0') AS hcd,
+                             coalesce(hhd, '0') AS hhd,
+                             coalesce(hhm, '0') AS hhm FROM touro WHERE naabcode = \'''' + dam_NAABSIRE + '\'')
+    sire = cursor.fetchone()
+
+    cursor.execute('''SELECT coalesce(longname, '') AS longname,
+                             coalesce(sire, '') AS sire,
+                             coalesce(mgs, '') AS mgs,
+                             coalesce(pgs, '') AS pgs,
+                             coalesce(hh1, '0') AS hh1,
+                             coalesce(hh2, '0') AS hh2,
+                             coalesce(hh3, '0') AS hh3,
+                             coalesce(hh4, '0') AS hh4,
+                             coalesce(hh5, '0') AS hh5,
+                             coalesce(hh6, '0') AS hh6,
+                             coalesce(hh0, '0') AS hh0,
+                             coalesce(hhc, '0') AS hhc,
+                             coalesce(hcd, '0') AS hcd,
+                             coalesce(hhd, '0') AS hhd,
+                             coalesce(hhm, '0') AS hhm FROM touro WHERE naabcode = \'''' + dam_NAABMGS + '\'')
+    mgs = cursor.fetchone()
+
+    sire_itself = (str(np.array(sire['longname'])).replace("['","").replace("']",""))
+    sire_sire = (str(np.array(sire['sire'])).replace("['","").replace("']",""))
+    sire_mgs = (str(np.array(sire['mgs'])).replace("['","").replace("']",""))
+    sire_pgs = (str(np.array(sire['pgs'])).replace("['","").replace("']",""))
+    mgs_itself = (str(np.array(mgs['longname'])).replace("['","").replace("']",""))
+    mgs_sire = (str(np.array(mgs['sire'])).replace("['","").replace("']",""))
+    mgs_mgs = (str(np.array(mgs['mgs'])).replace("['","").replace("']",""))
+    mgs_pgs = (str(np.array(mgs['pgs'])).replace("['","").replace("']",""))
+    linhagens = [sire_itself,sire_sire,sire_mgs,sire_pgs,mgs_itself,mgs_sire,mgs_mgs,mgs_pgs]
+
+    # PREPARA OS FILTROS PARA EFETUAR A BUSCA DOS TOUROS
+    bulls_filter = ''
+    bulls_filter = bulls_filter + " and sire not ilike '%" + sire_itself + "%'"
+    bulls_filter = bulls_filter + " and mgs not ilike '%" + sire_itself + "%'"
+    bulls_filter = bulls_filter + " and pgs not ilike '%" + sire_itself + "%'"
+    bulls_filter = bulls_filter + " and mggs not ilike '%" + sire_itself + "%'"
+    bulls_filter = bulls_filter + " and ppggs not ilike '%" + sire_itself + "%'"
+    bulls_filter = bulls_filter + " and mpggs not ilike '%" + sire_itself + "%'"
+    bulls_filter = bulls_filter + " and pmggs not ilike '%" + sire_itself + "%'"
+    bulls_filter = bulls_filter + " and sire not ilike '%" + sire_sire + "%'"
+    bulls_filter = bulls_filter + " and mgs not ilike '%" + sire_sire + "%'"
+    bulls_filter = bulls_filter + " and pgs not ilike '%" + sire_sire + "%'"
+    bulls_filter = bulls_filter + " and mggs not ilike '%" + sire_sire + "%'"
+    bulls_filter = bulls_filter + " and sire not ilike '%" + sire_mgs + "%'"
+    bulls_filter = bulls_filter + " and mgs not ilike '%" + sire_mgs + "%'"
+    bulls_filter = bulls_filter + " and pgs not ilike '%" + sire_mgs + "%'"
+    bulls_filter = bulls_filter + " and sire not ilike '%" + sire_pgs + "%'"
+    bulls_filter = bulls_filter + " and mgs not ilike '%" + sire_pgs + "%'"
+    bulls_filter = bulls_filter + " and pgs not ilike '%" + sire_pgs + "%'"
+    bulls_filter = bulls_filter + " and sire not ilike '%" + mgs_itself + "%'"
+    bulls_filter = bulls_filter + " and mgs not ilike '%" + mgs_itself + "%'"
+    bulls_filter = bulls_filter + " and pgs not ilike '%" + mgs_itself + "%'"
+    bulls_filter = bulls_filter + " and mggs not ilike '%" + mgs_itself + "%'"
+    bulls_filter = bulls_filter + " and sire not ilike '%" + mgs_sire + "%'"
+    bulls_filter = bulls_filter + " and mgs not ilike '%" + mgs_sire + "%'"
+    bulls_filter = bulls_filter + " and pgs not ilike '%" + mgs_sire + "%'"
+    bulls_filter = bulls_filter + " and sire not ilike '%" + mgs_mgs + "%'"
+    bulls_filter = bulls_filter + " and sire not ilike '%" + mgs_pgs + "%'"
+
+    # HAPLOTIPOS - VACAS PORTADORES DE ALGUMAS DOENÇA NAO PODEM ACASALAR COM TOUROS PORTADORES
+    sire_HH1 = (int(sire['hh1']))
+    sire_HH2 = (int(sire['hh2']))
+    sire_HH3 = (int(sire['hh3']))
+    sire_HH4 = (int(sire['hh4']))
+    sire_HH5 = (int(sire['hh5']))
+    sire_HH6 = (int(sire['hh6']))
+    sire_HH0 = (int(sire['hh0']))
+    sire_HHC = (int(sire['hhc']))
+    sire_HCD = (int(sire['hcd']))
+    sire_HHD = (int(sire['hhd']))
+    sire_HHM = (int(sire['hhm']))
+
+    mgs_HH1 = (int(mgs['hh1']))
+    mgs_HH2 = (int(mgs['hh2']))
+    mgs_HH3 = (int(mgs['hh3']))
+    mgs_HH4 = (int(mgs['hh4']))
+    mgs_HH5 = (int(mgs['hh5']))
+    mgs_HH6 = (int(mgs['hh6']))
+    mgs_HH0 = (int(mgs['hh0']))
+    mgs_HHC = (int(mgs['hhc']))
+    mgs_HCD = (int(mgs['hcd']))
+    mgs_HHD = (int(mgs['hhd']))
+    mgs_HHM = (int(mgs['hhm']))
+
+    if (sire_HH1 == 1) or (mgs_HH1 == 1):
+        hh1_risk = "-> Risco de haplótipo HH1 - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hh1 != '1' or hh1 is null)"
+    else:
+        hh1_risk = ''
+        pass
+
+    if (sire_HH2 == 1) or (mgs_HH2 == 1):
+        hh2_risk = "-> Risco de haplótipo HH2 - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hh2 != '1' or hh2 is null)"
+    else:
+        hh2_risk = ''
+        pass
+
+    if (sire_HH3 == 1) or (mgs_HH3 == 1):
+        hh3_risk = "-> Risco de haplótipo HH3 - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hh3 != '1' or hh3 is null)"
+    else:
+        hh3_risk = ''
+        pass
+
+    if (sire_HH4 == 1) or (mgs_HH4 == 1):
+        hh4_risk = "-> Risco de haplótipo HH4 - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hh4 != '1' or hh4 is null)"
+    else:
+        hh4_risk = ''
+        pass
+
+    if (sire_HH5 == 1) or (mgs_HH5 == 1):
+        hh5_risk = "-> Risco de haplótipo HH5 - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hh5 != '1' or hh5 is null)"
+    else:
+        hh5_risk = ''
+        pass
+
+    if (sire_HH6 == 1) or (mgs_HH6 == 1):
+        hh6_risk = "-> Risco de haplótipo HH6 - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hh6 != '1' or hh6 is null)"
+    else:
+        hh6_risk = ''
+        pass
+
+    if (sire_HH0 == 1) or (mgs_HH0 == 1):
+        hh0_risk = "-> Risco de haplótipo HH0 - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hh0 != '1' or hh0 is null)"
+    else:
+        hh0_risk = ''
+        pass
+
+    if (sire_HHC == 1) or (mgs_HHC == 1):
+        hhc_risk = "-> Risco de haplótipo HHC - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hhc != '1' or hhc is null)"
+    else:
+        hhc_risk = ''
+        pass
+
+    if (sire_HCD >= 1 ) or (mgs_HCD >= 1):
+        hcd_risk = "-> Risco de haplótipo HCD - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hcd != '1' or hcd is null)"
+    else:
+        hcd_risk = ''
+        pass
+
+    if (sire_HHD == 1 ) or (mgs_HHD == 1):
+        hhd_risk = "-> Risco de haplótipo HHD - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hhd != '1' or hhd is null)"
+    else:
+        hhd_risk = ''
+        pass
+
+    if (sire_HHM == 1 ) or (mgs_HHM == 1):
+        hhm_risk = "-> Risco de haplótipo HHM - touros portadores foram excluídos"
+        bulls_filter = bulls_filter + " and (hhm != '1' or hhm is null)"
+    else:
+        hhm_risk = ''
+        pass
+
+    # 2 - ESTOQUE SÊMEN
+    if (data['bull_filter'] == '2'):
+        bulls_filter = bulls_filter + " and naabcode in (select naabcode from semen where cliente_id = '" + data['client_code'] + "' and estoque > 0)"
+
+    # 3 - FORNECEDORES
+    if (data['bull_filter'] == '3') and (data['bull_supplier_code'] != ''):
+        # DIVIDINDO A STRING EM UMA LISTA DE VALORES
+        supplier_array = data['bull_supplier_code'].split(',')
+
+        # CRIANDO A CONDIÇÃO SQL IN
+        in_supplier = "in ({})".format(','.join(["'{}'".format(supplier_value) for supplier_value in supplier_array]))
+
+        bulls_filter = bulls_filter + " and company " + in_supplier
+
+    # 4 - ACASALAMENTO DIRECIONADO
+    if (data['bull_filter'] == '4') and (data['bull_code'] != ''):
+        # DIVIDINDO A STRING EM UMA LISTA DE VALORES
+        bull_array = data['bull_code'].split(',')
+
+        # CRIANDO A CONDIÇÃO SQL IN
+        in_bull = "in ({})".format(','.join(["'{}'".format(bull_value) for bull_value in bull_array]))
+
+        bulls_filter = bulls_filter + " and naabcode " + in_bull
+
+    # 5 - CATALOGO INTERCOOPERAÇÃO
+    if (data['bull_filter'] == '5') and (data['intercooperation_code'] != ''):
+        bulls_filter = bulls_filter + " and naabcode in (select naabcode from intercooperacao_touro it where it.intercooperacao_id = '" + data['intercooperation_code'] + "' and it.naabcode not in (select id.naabcode from intercooperacao_desabilitado id where id.intercooperacao_id = it.intercooperacao_id and id.cliente_id = '" + data['client_code'] + "'))"
+
+    # FILTRO DA BETA CASEINA
+    if data['bull_filter_betacasein'] is not None and data['bull_filter_betacasein'] != '':
+        bulls_filter = bulls_filter + " and betacasein = '" + data['bull_filter_betacasein'] + "'"
+
+    # FILTRO DA COR DO TOURO
+    if data['bull_filter_color'] is not None and data['bull_filter_color'] != '':
+        bulls_filter = bulls_filter + " and color = '" + data['bull_filter_color'] + "'"
+
+    # BUSCA OS TOUROS COM BASE NOS FILTROS
+    cursor.execute('''SELECT naabcode,
+                             coalesce(shortname, '') AS shortname,
+                             coalesce(tpi, 0) AS tpi,
+                             coalesce(lifetimenetmerit, 0) AS lifetimenetmerit,
+                             coalesce(lifetimecheesemerit, 0) AS lifetimecheesemerit,
+                             coalesce(expectedfutureinbreeding, 0) AS expectedfutureinbreeding,
+                             coalesce(milk, 0) AS milk,
+                             coalesce(fat, 0) AS fat,
+                             coalesce(protein, 0) AS protein,
+                             coalesce(fatpercent, 0) AS fatpercent,
+                             coalesce(proteinpercent, 0) AS proteinpercent,
+                             coalesce(productionefficiency, 0) AS productionefficiency,
+                             coalesce(feedsaved, 0) AS feedsaved,
+                             coalesce(somaticcellscore, 0) AS somaticcellscore,
+                             coalesce(productivelife, 0) AS productivelife,
+                             coalesce(heiferlivability, 0) AS heiferlivability,
+                             coalesce(cowlivability, 0) AS cowlivability,
+                             coalesce(daughterpregnancyrate, 0) AS daughterpregnancyrate,
+                             coalesce(heiferconceptionrate, 0) AS heiferconceptionrate,
+                             coalesce(cowconceptionrate, 0) AS cowconceptionrate,
+                             coalesce(fertilityandfitness, 0) AS fertilityandfitness,
+                             coalesce(cdcbmastitis, 0) AS cdcbmastitis,
+                             coalesce(cdcbmetritis, 0) AS cdcbmetritis,
+                             coalesce(cdcbretainedplacenta, 0) AS cdcbretainedplacenta,
+                             coalesce(cdcbketosis, 0) AS cdcbketosis,
+                             coalesce(cdcbdisplacedabomasum, 0) AS cdcbdisplacedabomasum,
+                             coalesce(cdcbhypocaicemia, 0) AS cdcbhypocaicemia,
+                             coalesce(daughtercalvingease, 0) AS daughtercalvingease,
+                             coalesce(daughterstillbirth, 0) AS daughterstillbirth,
+                             coalesce(sirecalvingease, 0) AS sirecalvingease,
+                             coalesce(sirestillbirth, 0) AS sirestillbirth,
+                             coalesce(agefirstchildbirth, 0) AS agefirstchildbirth,
+                             coalesce(durationpregnancy, 0) AS durationpregnancy,
+                             coalesce(predictedtransmittingabilitytype, 0) AS predictedtransmittingabilitytype,
+                             coalesce(uddercomposite, 0) AS uddercomposite,
+                             coalesce(feetandlegcomposite, 0) AS feetandlegcomposite,
+                             coalesce(health, 0) AS health,
+                             coalesce(bodysizecomposite, 0) AS bodysizecomposite,
+                             coalesce(dairycomposite, 0) AS dairycomposite,
+                             coalesce(stature, 0) AS stature,
+                             coalesce(strength, 0) AS strength,
+                             coalesce(bodydepth, 0) AS bodydepth,
+                             coalesce(dairyform, 0) AS dairyform,
+                             coalesce(rumpangle, 0) AS rumpangle,
+                             coalesce(thurlwidth, 0) AS thurlwidth,
+                             coalesce(rearlegssideview, 0) AS rearlegssideview,
+                             coalesce(rearlegsrearview, 0) AS rearlegsrearview,
+                             coalesce(footangle, 0) AS footangle,
+                             coalesce(feetandlegsscore, 0) AS feetandlegsscore,
+                             coalesce(foreudderattachement, 0) AS foreudderattachement,
+                             coalesce(rearudderheight, 0) AS rearudderheight,
+                             coalesce(rearudderwidth, 0) AS rearudderwidth,
+                             coalesce(uddercleft, 0) AS uddercleft,
+                             coalesce(udderdepth, 0) AS udderdepth,
+                             coalesce(frontteatplacement, 0) AS frontteatplacement,
+                             coalesce(rearteatplacement, 0) AS rearteatplacement,
+                             coalesce(teatlength, 0) AS teatlength,
+                             coalesce(longname, '') AS longname,
+                             coalesce(sire, '') AS sire,
+                             coalesce(mgs, '') AS mgs,
+                             coalesce(pgs, '') AS pgs,
+                             coalesce(mggs, '') AS mggs,
+                             coalesce(ppggs, '') AS ppggs,
+                             coalesce(mpggs, '') AS mpggs,
+                             coalesce(pmggs, '') AS pmggs,
+                             coalesce(hh1, '0') AS hh1,
+                             coalesce(hh2, '0') AS hh2,
+                             coalesce(hh3, '0') AS hh3,
+                             coalesce(hh4, '0') AS hh4,
+                             coalesce(hh5, '0') AS hh5,
+                             coalesce(hh6, '0') AS hh6,
+                             coalesce(hh0, '0') AS hh0,
+                             coalesce(hhc, '0') AS hhc,
+                             coalesce(hcd, '0') AS hcd 
+                        FROM touro 
+                       WHERE mating = 1 ''' + bulls_filter)
+    bulls = cursor.fetchall()
+
+    # DECLARAR INFORMACOES DOS TOUROS - COLUNAS COM AS INFORMACOES DOS TOUROS FILTRADOS
+    df = pd.DataFrame(bulls, columns = list(bulls[0].keys()))
+
+    sire_NAAB = (df['naabcode'])
+    sire_NAME = (df['shortname'])
+    sire_TPI = (df['tpi'])
+    sire_NM = (df['lifetimenetmerit'])
+    sire_CM = (df['lifetimecheesemerit'])
+    sire_EFI = (df['expectedfutureinbreeding'])
+    sire_MILK = (df['milk'])
+    sire_FAT = (df['fat'])
+    sire_PRO = (df['protein'])
+    sire_FAT_P = (df['fatpercent'])
+    sire_PRO_P = (df['proteinpercent'])
+    sire_FE = (df['productionefficiency'])
+    sire_FSAV = (df['feedsaved'])
+    sire_SCS = (df['somaticcellscore'])
+    sire_PL = (df['productivelife'])
+    sire_HLIV = (df['heiferlivability'])
+    sire_LIV = (df['cowlivability'])
+    sire_DPR = (df['daughterpregnancyrate'])
+    sire_HCR = (df['heiferconceptionrate'])
+    sire_CCR = (df['cowconceptionrate'])
+    sire_FI = (df['fertilityandfitness'])
+    sire_MAST = (df['cdcbmastitis'])
+    sire_METR = (df['cdcbmetritis'])
+    sire_RETP = (df['cdcbretainedplacenta'])
+    sire_KETO = (df['cdcbketosis'])
+    sire_DA = (df['cdcbdisplacedabomasum'])
+    sire_MFEV = (df['cdcbhypocaicemia'])
+    sire_DCE = (df['daughtercalvingease'])
+    sire_DSB = (df['daughterstillbirth'])
+    sire_SCE = (df['sirecalvingease'])
+    sire_SSB = (df['sirestillbirth'])
+    sire_EFC = (df['agefirstchildbirth'])
+    sire_GL = (df['durationpregnancy'])
+    sire_PTAT = (df['predictedtransmittingabilitytype'])
+    sire_UDC = (df['uddercomposite'])
+    sire_FLC = (df['feetandlegcomposite'])
+    sire_HT = (df['health'])
+    sire_BSC = (df['bodysizecomposite'])
+    sire_DC = (df['dairycomposite'])
+    sire_ST = (df['stature'])
+    sire_SR = (df['strength'])
+    sire_BD = (df['bodydepth'])
+    sire_DF = (df['dairyform'])
+    sire_RA = (df['rumpangle'])
+    sire_TW = (df['thurlwidth'])
+    sire_RLS = (df['rearlegssideview'])
+    sire_RLR = (df['rearlegsrearview'])
+    sire_FA = (df['footangle'])
+    sire_FLS = (df['feetandlegsscore'])
+    sire_FU = (df['foreudderattachement'])
+    sire_UH = (df['rearudderheight'])
+    sire_UW = (df['rearudderwidth'])
+    sire_UC = (df['uddercleft'])
+    sire_UD = (df['udderdepth'])
+    sire_FTP = (df['frontteatplacement'])
+    sire_RTP = (df['rearteatplacement'])
+    sire_TL = (df['teatlength'])
+    sire_ITSELF = (df['longname'])
+    sire_SIRE = (df['sire'])
+    sire_MGS = (df['mgs'])
+    sire_PGS = (df['pgs'])
+    sire_MGGS = (df['mggs'])
+    sire_PPGGS = (df['ppggs'])
+    sire_MPGGS = (df['mpggs'])
+    sire_PMGGS = (df['pmggs'])
+    sire_HH1 = (df['hh1'])
+    sire_HH2 = (df['hh2'])
+    sire_HH3 = (df['hh3'])
+    sire_HH4 = (df['hh4'])
+    sire_HH5 = (df['hh5'])
+    sire_HH6 = (df['hh6'])
+    sire_HH0 = (df['hh0'])
+    sire_HHC = (df['hhc'])
+    sire_HCD = (df['hcd'])
+
+    # MONTAGEM DO VETOR DE PREDICAO
+    x = [[sire_TPI,sire_NM,sire_CM,sire_EFI,sire_MILK,sire_FAT,sire_PRO,sire_FAT_P,sire_PRO_P,sire_FE,sire_FSAV,sire_SCS,sire_PL,sire_HLIV,sire_LIV,sire_DPR,sire_HCR,sire_CCR,sire_FI,sire_MAST,sire_METR,sire_RETP,sire_KETO,sire_DA,sire_MFEV,sire_HT,sire_GL,sire_EFC,sire_SCE,sire_SSB,sire_PTAT,sire_UDC,sire_FLC,sire_BSC,sire_DC,sire_ST,sire_SR,sire_BD,sire_DF,sire_RA,sire_TW,sire_RLS,sire_RLR,sire_FA,sire_FLS,sire_FU,sire_UH,sire_UW,sire_UC,sire_UD,sire_FTP,sire_RTP,sire_TL,dam_TPI,dam_NM,dam_CM,dam_EFI,dam_MILK,dam_FAT,dam_PRO,dam_FAT_P,dam_PRO_P,dam_FE,dam_FSAV,dam_SCS,dam_PL,dam_HLIV,dam_LIV,dam_DPR,dam_HCR,dam_CCR,dam_FI,dam_MAST,dam_METR,dam_RETP,dam_KETO,dam_DA,dam_MFEV,dam_HT,dam_GL,dam_EFC,dam_SCE,dam_SSB,dam_PTAT,dam_UDC,dam_FLC,dam_BSC,dam_DC,dam_ST,dam_SR,dam_BD,dam_DF,dam_RA,dam_TW,dam_RLS,dam_RLR,dam_FA,dam_FLS,dam_FU,dam_UH,dam_UW,dam_UC,dam_UD,dam_FTP,dam_RTP,dam_TL]]
+    x1 = np.array([sire_TPI,sire_NM,sire_CM,sire_EFI,sire_MILK,sire_FAT,sire_PRO,sire_FAT_P,sire_PRO_P,sire_FE,sire_FSAV,sire_SCS,sire_PL,sire_HLIV,sire_LIV,sire_DPR,sire_HCR,sire_CCR,sire_FI,sire_MAST,sire_METR,sire_RETP,sire_KETO,sire_DA,sire_MFEV,sire_HT,sire_GL,sire_EFC,sire_SCE,sire_SSB,sire_PTAT,sire_UDC,sire_FLC,sire_BSC,sire_DC,sire_ST,sire_SR,sire_BD,sire_DF,sire_RA,sire_TW,sire_RLS,sire_RLR,sire_FA,sire_FLS,sire_FU,sire_UH,sire_UW,sire_UC,sire_UD,sire_FTP,sire_RTP,sire_TL])
+    x1 = x1.transpose()
+
+    l = len(df)
+    x2 = np.array([[dam_TPI,dam_NM,dam_CM,dam_EFI,dam_MILK,dam_FAT,dam_PRO,dam_FAT_P,dam_PRO_P,dam_FE,dam_FSAV,dam_SCS,dam_PL,dam_HLIV,dam_LIV,dam_DPR,dam_HCR,dam_CCR,dam_FI,dam_MAST,dam_METR,dam_RETP,dam_KETO,dam_DA,dam_MFEV,dam_HT,dam_GL,dam_EFC,dam_SCE,dam_SSB,dam_PTAT,dam_UDC,dam_FLC,dam_BSC,dam_DC,dam_ST,dam_SR,dam_BD,dam_DF,dam_RA,dam_TW,dam_RLS,dam_RLR,dam_FA,dam_FLS,dam_FU,dam_UH,dam_UW,dam_UC,dam_UD,dam_FTP,dam_RTP,dam_TL]])
+    x2 = np.repeat(x2, l, axis=0)
+
+    x = np.concatenate([x1,x2],axis=1)
+    x = np.asarray(x).astype(np.float32)
+
+    x = tf.convert_to_tensor(x)
+
+    #PREDICAO DA FEMEA SELECIONADA X TOUROS SELECIONADOS
+    def predict(x):
+        pta_tpi = model_TPI(x)
+        pta_nm = model_NM(x)
+        pta_cm = model_CM(x)
+        pta_efi = model_EFI(x)
+        pta_milk = model_MILK(x)
+        pta_fat = model_FAT(x)
+        pta_pro = model_PRO(x)
+        pta_fatp = model_FATP(x)
+        pta_prop = model_PROP(x)
+        pta_fe = model_FE(x)
+        pta_fsav = model_FSAV(x)
+        pta_scs = model_SCS(x)
+        pta_pl = model_PL(x)
+        pta_hliv = model_HLIV(x)
+        pta_liv = model_LIV(x)
+        pta_dpr = model_DPR(x)
+        pta_hcr = model_HCR(x)
+        pta_ccr = model_CCR(x)
+        pta_fi = model_FI(x)
+        pta_mast = model_MAST(x)
+        pta_metr = model_METR(x)
+        pta_retp = model_RETP(x)
+        pta_keto = model_KETO(x)
+        pta_da = model_DA(x)
+        pta_mfev = model_MFEV(x)
+        pta_ht = model_HT(x)
+        pta_gl = model_GL(x)
+        pta_efc = model_EFC(x)
+        pta_sce = model_SCE(x)
+        pta_ssb = model_SSB(x)
+        pta_ptat = model_PTAT(x)
+        pta_udc = model_UDC(x)
+        pta_flc = model_FLC(x)
+        pta_bsc = model_BSC(x)
+        pta_dc = model_DC(x)
+        pta_st = model_ST(x)
+        pta_sr = model_SR(x)
+        pta_bd = model_BD(x)
+        pta_df = model_DF(x)
+        pta_ra = model_RA(x)
+        pta_tw = model_TW(x)
+        pta_rls = model_RLS(x)
+        pta_rlr = model_RLR(x)
+        pta_fa = model_FA(x)
+        pta_fls = model_FLS(x)
+        pta_fu = model_FU(x)
+        pta_uh = model_UH(x)
+        pta_uw = model_UW(x)
+        pta_uc = model_UC(x)
+        pta_ud = model_UD(x)
+        pta_ftp = model_FTP(x)
+        pta_rtp = model_RTP(x)
+        pta_tl = model_TL(x)
+        
+        return pta_tpi,pta_nm,pta_cm,pta_efi,pta_milk,pta_fat,pta_pro,pta_fatp,pta_prop,pta_fe,pta_fsav,pta_scs,pta_pl,pta_hliv,pta_liv,pta_dpr,pta_hcr,pta_ccr,pta_fi,pta_mast,pta_metr,pta_retp,pta_keto,pta_da,pta_mfev,pta_ht,pta_gl,pta_efc,pta_sce,pta_ssb,pta_ptat,pta_udc,pta_flc,pta_bsc,pta_dc,pta_st,pta_sr,pta_bd,pta_df,pta_ra,pta_tw,pta_rls,pta_rlr,pta_fa,pta_fls,pta_fu,pta_uh,pta_uw,pta_uc,pta_ud,pta_ftp,pta_rtp,pta_tl
+
+    pta_tpi,pta_nm,pta_cm,pta_efi,pta_milk,pta_fat,pta_pro,pta_fatp,pta_prop,pta_fe,pta_fsav,pta_scs,pta_pl,pta_hliv,pta_liv,pta_dpr,pta_hcr,pta_ccr,pta_fi,pta_mast,pta_metr,pta_retp,pta_keto,pta_da,pta_mfev,pta_ht,pta_gl,pta_efc,pta_sce,pta_ssb,pta_ptat,pta_udc,pta_flc,pta_bsc,pta_dc,pta_st,pta_sr,pta_bd,pta_df,pta_ra,pta_tw,pta_rls,pta_rlr,pta_fa,pta_fls,pta_fu,pta_uh,pta_uw,pta_uc,pta_ud,pta_ftp,pta_rtp,pta_tl = predict(x)
+
+    sire_NAAB = np.array([sire_NAAB])
+    sire_NAME = np.array([sire_NAME])
+    sireid = np.concatenate([sire_NAAB,sire_NAME],axis=0)
+    sireid = sireid.transpose()
+
+    # BANCO COM PTA CONCANTENADAS - MULTIPLICACAO DOS PESOS FORNECIDOS COM AS CARACTERÍSTICAS PREDITAS PARA PODER RANQUEAR OS MELHORES RANQUEAMENTOS
+    traits = np.concatenate([sireid,pta_tpi,pta_nm,pta_cm,pta_efi,pta_milk,pta_fat,pta_pro,pta_fatp,pta_prop,pta_fe,pta_fsav,pta_scs,pta_pl,pta_hliv,pta_liv,pta_dpr,pta_hcr,pta_ccr,pta_fi,pta_mast,pta_metr,pta_retp,pta_keto,pta_da,pta_mfev,pta_ht,pta_gl,pta_efc,pta_sce,pta_ssb,pta_ptat,pta_udc,pta_flc,pta_bsc,pta_dc,pta_st,pta_sr,pta_bd,pta_df,pta_ra,pta_tw,pta_rls,pta_rlr,pta_fa,pta_fls,pta_fu,pta_uh,pta_uw,pta_uc,pta_ud,pta_ftp,pta_rtp,pta_tl],axis=1)
+
+    scaler = MinMaxScaler(feature_range=(0,1))
+
+    standardize_tpi = scaler.fit_transform(traits[:,2].reshape(-1,1))*weight_tpi
+    standardize_nm = scaler.fit_transform(traits[:,3].reshape(-1,1))*weight_nm
+    standardize_cm = scaler.fit_transform(traits[:,4].reshape(-1,1))*weight_cm
+    standardize_milk = scaler.fit_transform(traits[:,6].reshape(-1,1))*weight_milk
+    standardize_fat = scaler.fit_transform(traits[:,7].reshape(-1,1))*weight_fat
+    standardize_pro = scaler.fit_transform(traits[:,8].reshape(-1,1))*weight_pro
+    standardize_fe = scaler.fit_transform(traits[:,11].reshape(-1,1))*weight_fe
+    standardize_fsav = scaler.fit_transform(traits[:,12].reshape(-1,1))*weight_fsav
+    standardize_scs = (scaler.fit_transform(traits[:,13].reshape(-1,1))*-1)*weight_scs
+    standardize_pl = scaler.fit_transform(traits[:,14].reshape(-1,1))*weight_pl
+    standardize_liv = scaler.fit_transform(traits[:,16].reshape(-1,1))*weight_liv
+    standardize_dpr = scaler.fit_transform(traits[:,17].reshape(-1,1))*weight_dpr
+    standardize_ht = scaler.fit_transform(traits[:,27].reshape(-1,1))*weight_ht
+    standardize_ptat = scaler.fit_transform(traits[:,32].reshape(-1,1))*weight_ptat
+    standardize_udc = scaler.fit_transform(traits[:,33].reshape(-1,1))*weight_udc
+    standardize_flc = scaler.fit_transform(traits[:,34].reshape(-1,1))*weight_flc
+    standardize_dc = scaler.fit_transform(traits[:,36].reshape(-1,1))*weight_dc
+
+    standardize_weighted = np.sum([[standardize_tpi,standardize_nm,standardize_cm,standardize_milk,standardize_fat,standardize_pro,standardize_fe,standardize_fsav,standardize_scs,standardize_pl,standardize_liv,standardize_dpr,standardize_ht,standardize_ptat,standardize_udc,standardize_flc,standardize_dc]], axis=1).reshape(-1,1)
+
+    # BANCO FINAL DE TOUROS - CONTROLE DAS PROGENIES
+    final = np.concatenate([traits,standardize_weighted],axis=1)
+
+    final_filtered = final[(final[:, 2] >= min_tpi) & (final[:, 2] <= max_tpi) &
+                (final[:, 3] >= min_nm) & (final[:, 3] <= max_nm) &
+                (final[:, 4] >= min_cm) & (final[:, 4] <= max_cm) &
+                (final[:, 5] >= min_efi) & (final[:, 5] <= max_efi) &
+                (final[:, 6] >= min_milk) & (final[:, 6] <= max_milk) &
+                (final[:, 7] >= min_fat) & (final[:, 7] <= max_fat) &
+                (final[:, 8] >= min_pro) & (final[:, 8] <= max_pro) &
+                (final[:, 9] >= min_fatp) & (final[:, 9] <= max_fatp) &
+                (final[:, 10] >= min_prop) & (final[:, 10] <= max_prop) &
+                (final[:, 11] >= min_fe) & (final[:, 11] <= max_fe) &
+                (final[:, 12] >= min_fsav) & (final[:, 12] <= max_fsav) &
+                (final[:, 13] >= min_scs) & (final[:, 13] <= max_scs) &
+                (final[:, 14] >= min_pl) & (final[:, 14] <= max_pl) &
+                (final[:, 15] >= min_hliv) & (final[:, 15] <= max_hliv) &
+                (final[:, 16] >= min_liv) & (final[:, 16] <= max_liv) &
+                (final[:, 17] >= min_dpr) & (final[:, 17] <= max_dpr) &
+                (final[:, 18] >= min_hcr) & (final[:, 18] <= max_hcr) &
+                (final[:, 19] >= min_ccr) & (final[:, 19] <= max_ccr) &
+                (final[:, 20] >= min_fi) & (final[:, 20] <= max_fi) &
+                (final[:, 21] >= min_mast) & (final[:, 21] <= max_mast) &
+                (final[:, 22] >= min_metr) & (final[:, 22] <= max_metr) &
+                (final[:, 23] >= min_retp) & (final[:, 23] <= max_retp) &
+                (final[:, 24] >= min_keto) & (final[:, 24] <= max_keto) &
+                (final[:, 25] >= min_da) & (final[:, 25] <= max_da) &
+                (final[:, 26] >= min_mfev) & (final[:, 26] <= max_mfev) &
+                (final[:, 27] >= min_ht) & (final[:, 27] <= max_ht) &
+                (final[:, 28] >= min_gl) & (final[:, 28] <= max_gl) &
+                (final[:, 29] >= min_efc) & (final[:, 29] <= max_efc) &
+                (final[:, 30] >= min_sce) & (final[:, 30] <= max_sce) &
+                (final[:, 31] >= min_ssb) & (final[:, 31] <= max_ssb) &
+                (final[:, 32] >= min_ptat) & (final[:, 32] <= max_ptat) &
+                (final[:, 33] >= min_ptat) & (final[:, 33] <= max_ptat) &
+                (final[:, 34] >= min_flc) & (final[:, 34] <= max_flc) & 
+                (final[:, 35] >= min_bsc) & (final[:, 35] <= max_bsc) & 
+                (final[:, 36] >= min_dc) & (final[:, 36] <= max_dc) & 
+                (final[:, 37] >= min_st) & (final[:, 37] <= max_st) & 
+                (final[:, 38] >= min_sr) & (final[:, 38] <= max_sr) & 
+                (final[:, 39] >= min_bd) & (final[:, 39] <= max_bd) & 
+                (final[:, 40] >= min_df) & (final[:, 40] <= max_df) & 
+                (final[:, 41] >= min_ra) & (final[:, 41] <= max_ra) & 
+                (final[:, 42] >= min_tw) & (final[:, 42] <= max_tw) & 
+                (final[:, 43] >= min_rls) & (final[:, 43] <= max_rls) & 
+                (final[:, 44] >= min_rlr) & (final[:, 44] <= max_rlr) & 
+                (final[:, 45] >= min_fa) & (final[:, 45] <= max_fa) & 
+                (final[:, 46] >= min_fls) & (final[:, 46] <= max_fls) & 
+                (final[:, 47] >= min_fu) & (final[:, 47] <= max_fu) & 
+                (final[:, 48] >= min_uh) & (final[:, 48] <= max_uh) & 
+                (final[:, 49] >= min_uw) & (final[:, 49] <= max_uw) & 
+                (final[:, 50] >= min_uc) & (final[:, 50] <= max_uc) & 
+                (final[:, 51] >= min_ud) & (final[:, 51] <= max_ud) & 
+                (final[:, 52] >= min_ftp) & (final[:, 52] <= max_ftp) & 
+                (final[:, 53] >= min_rtp) & (final[:, 53] <= max_rtp) &
+                (final[:, 54] >= min_tl) & (final[:, 54] <= max_tl)]
+
+    # FILTRO ALTERNATIVO - SE FILTRO PROPOSTO PELO USUARIO FOR MUITO EXIGENTE, UTILIZA-SE ESTE FILTRO AUTOMATICAMENTE
+    if len(final_filtered) < 3:
+        final_filtered = final[(final[:, 2] >= 0) & (final[:, 2] <= 3500) &
+                (final[:, 3] >= -2000) & (final[:, 3] <= 2000) &
+                (final[:, 4] >= -2000) & (final[:, 4] <= 2000) &
+                (final[:, 5] >= 0) & (final[:, 5] <= 20) &
+                (final[:, 6] >= -5000) & (final[:, 6] <= 5000) &
+                (final[:, 7] >= -300) & (final[:, 7] <= 300) &
+                (final[:, 8] >= -300) & (final[:, 8] <= 300) &
+                (final[:, 9] >= -2) & (final[:, 9] <= 2) &
+                (final[:, 10] >= -2) & (final[:, 10] <= 2) &
+                (final[:, 11] >= -500) & (final[:, 11] <= 500) &
+                (final[:, 12] >= -500) & (final[:, 12] <= 500) &
+                (final[:, 13] >= 2) & (final[:, 13] <= 3.5) &
+                (final[:, 14] >= -10) & (final[:, 14] <= 10) &
+                (final[:, 15] >= -10) & (final[:, 15] <= 10) &
+                (final[:, 16] >= -10) & (final[:, 16] <= 10) &
+                (final[:, 17] >= -10) & (final[:, 17] <= 10) &
+                (final[:, 18] >= -3) & (final[:, 18] <= 10) &
+                (final[:, 19] >= -3) & (final[:, 19] <= 10) &
+                (final[:, 20] >= -3) & (final[:, 20] <= 10) &
+                (final[:, 21] >= -3) & (final[:, 21] <= 10) &
+                (final[:, 22] >= -3) & (final[:, 22] <= 10) &
+                (final[:, 23] >= -3) & (final[:, 23] <= 10) &
+                (final[:, 24] >= -3) & (final[:, 24] <= 10) &
+                (final[:, 25] >= -3) & (final[:, 25] <= 10) &
+                (final[:, 26] >= -3) & (final[:, 26] <= 20) &
+                (final[:, 27] >= -10) & (final[:, 27] <= 10) &
+                (final[:, 28] >= -10) & (final[:, 28] <= 10) &
+                (final[:, 29] >= -10) & (final[:, 29] <= 10) &
+                (final[:, 30] >= -10) & (final[:, 30] <= 10) &
+                (final[:, 31] >= -10) & (final[:, 31] <= 10) &
+                (final[:, 32] >= -5) & (final[:, 32] <= 5) &
+                (final[:, 33] >= -5) & (final[:, 33] <= 5) &
+                (final[:, 33] >= -5) & (final[:, 33] <= 5) & 
+                (final[:, 34] >= -5) & (final[:, 34] <= 5) & 
+                (final[:, 35] >= -5) & (final[:, 35] <= 5) & # COMPOSTO CORPORAL
+                (final[:, 36] >= -5) & (final[:, 36] <= 5) & # COMPOSTO LEITEIRO
+                (final[:, 37] >= -5) & (final[:, 37] <= 5) & # ESTATURA
+                (final[:, 38] >= -5) & (final[:, 38] <= 5) & # FORÇA
+                (final[:, 39] >= -5) & (final[:, 39] <= 5) & # PROFUNDIDADE CORPORAL
+                (final[:, 40] >= -5) & (final[:, 40] <= 5) & # FORMA LEITEIRA
+                (final[:, 41] >= -5) & (final[:, 41] <= 5) & # ANGULO DE GARUPA
+                (final[:, 42] >= -5) & (final[:, 42] <= 5) & # LARGURA DE GARUPA
+                (final[:, 43] >= -5) & (final[:, 43] <= 5) & # PERNAS VISTA LATERAL
+                (final[:, 44] >= -5) & (final[:, 44] <= 5) & # PERNAS VISTA POSTERIOR
+                (final[:, 45] >= -5) & (final[:, 45] <= 5) & # ANGULO DE CASCO
+                (final[:, 46] >= -5) & (final[:, 46] <= 5) & # ESCORE DE PERNAS E PÉS
+                (final[:, 47] >= -5) & (final[:, 47] <= 5) & # INSERCAO DE UBERE ANTERIOR
+                (final[:, 48] >= -5) & (final[:, 48] <= 5) & # ALTURA DE UBERE POSTERIOR
+                (final[:, 49] >= -5) & (final[:, 49] <= 5) & # LARGURA DE UBERE POSTERIOR
+                (final[:, 50] >= -5) & (final[:, 50] <= 5) & # LIGAMENTO CENTRAL
+                (final[:, 51] >= -5) & (final[:, 51] <= 5) & # PROFUNDIDADE DE UBERE
+                (final[:, 52] >= -5) & (final[:, 52] <= 5) & # COLOCACAO DE TETOS ANTERIORES
+                (final[:, 53] >= -5) & (final[:, 53] <= 5) & # COLOCACAO DE TETEOS POSTERIORES
+                (final[:, 54] >= -5) & (final[:, 54] <= 5)]
+        filter_warning = 'Acasalamento realizado com filtro alternativo'
+    else:
+        filter_warning = 'Acasalamento realizado com filtro proposto'
+
+    # RANQUEAMENTO DAS PROGENIES PELO ESCORE
+    indices = np.argsort(-final_filtered[:, 55]) #55 é a coluna com o escore
+
+    # EXTRAÇAO DOS 3 PRIMEIROS (3 opcoes de acasalamento)
+    top_rows = final_filtered[indices[:3], :]
+
+    # VARIAVEIS PARA JSON - OUTPUT
+    naab_1 = top_rows[0,0] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    naab_2 = top_rows[1,0] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    naab_3 = top_rows[2,0] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    short_1 = top_rows[0,1] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    short_2 = top_rows[1,1] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    short_3 = top_rows[2,1] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    tpi_1 = top_rows[0,2] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    tpi_2 = top_rows[1,2] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    tpi_3 = top_rows[2,2] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    nm_1 = top_rows[0,3] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    nm_2 = top_rows[1,3] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    nm_3 = top_rows[2,3] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    cm_1 = top_rows[0,4] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    cm_2 = top_rows[1,4] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    cm_3 = top_rows[2,4] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    efi_1 = top_rows[0,5] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    efi_2 = top_rows[1,5] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    efi_3 = top_rows[2,5] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    milk_1 = top_rows[0,6] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    milk_2 = top_rows[1,6] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    milk_3 = top_rows[2,6] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    fat_1 = top_rows[0,7] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    fat_2 = top_rows[1,7] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    fat_3 = top_rows[2,7] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    pro_1 = top_rows[0,8] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    pro_2 = top_rows[1,8] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    pro_3 = top_rows[2,8] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    fatp_1 = top_rows[0,9] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    fatp_2 = top_rows[1,9] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    fatp_3 = top_rows[2,9] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    prop_1 = top_rows[0,10] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    prop_2 = top_rows[1,10] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    prop_3 = top_rows[2,10] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    fe_1 = top_rows[0,11] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    fe_2 = top_rows[1,11] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    fe_3 = top_rows[2,11] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    fsav_1 = top_rows[0,12] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    fsav_2 = top_rows[1,12] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    fsav_3 = top_rows[2,12] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    scs_1 = top_rows[0,13] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    scs_2 = top_rows[1,13] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    scs_3 = top_rows[2,13] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    pl_1 = top_rows[0,14] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    pl_2 = top_rows[1,14] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    pl_3 = top_rows[2,14] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    hliv_1 = top_rows[0,15] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    hliv_2 = top_rows[1,15] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    hliv_3 = top_rows[2,15] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    liv_1 = top_rows[0,16] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    liv_2 = top_rows[1,16] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    liv_3 = top_rows[2,16] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    dpr_1 = top_rows[0,17] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    dpr_2 = top_rows[1,17] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    dpr_3 = top_rows[2,17] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    hcr_1 = top_rows[0,18] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    hcr_2 = top_rows[1,18] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    hcr_3 = top_rows[2,18] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    ccr_1 = top_rows[0,19] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    ccr_2 = top_rows[1,19] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    ccr_3 = top_rows[2,19] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    fi_1 = top_rows[0,20] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    fi_2 = top_rows[1,20] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    fi_3 = top_rows[2,20] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    mast_1 = top_rows[0,21] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    mast_2 = top_rows[1,21] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    mast_3 = top_rows[2,21] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    metr_1 = top_rows[0,22] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    metr_2 = top_rows[1,22] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    metr_3 = top_rows[2,22] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    retp_1 = top_rows[0,23] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    retp_2 = top_rows[1,23] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    retp_3 = top_rows[2,23] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    keto_1 = top_rows[0,24] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    keto_2 = top_rows[1,24] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    keto_3 = top_rows[2,24] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    da_1 = top_rows[0,25] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    da_2 = top_rows[1,25] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    da_3 = top_rows[2,25] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    mfev_1 = top_rows[0,26] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    mfev_2 = top_rows[1,26] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    mfev_3 = top_rows[2,26] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    ht_1 = top_rows[0,27] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    ht_2 = top_rows[1,27] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    ht_3 = top_rows[2,27] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    gl_1 = top_rows[0,28] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    gl_2 = top_rows[1,28] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    gl_3 = top_rows[2,28] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    efc_1 = top_rows[0,29] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    efc_2 = top_rows[1,29] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    efc_3 = top_rows[2,29] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    sce_1 = top_rows[0,30] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    sce_2 = top_rows[1,30] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    sce_3 = top_rows[2,30] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    ssb_1 = top_rows[0,31] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    ssb_2 = top_rows[1,31] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    ssb_3 = top_rows[2,31] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    ptat_1 = top_rows[0,32] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    ptat_2 = top_rows[1,32] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    ptat_3 = top_rows[2,32] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    udc_1 = top_rows[0,33] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    udc_2 = top_rows[1,33] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    udc_3 = top_rows[2,33] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    flc_1 = top_rows[0,34] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    flc_2 = top_rows[1,34] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    flc_3 = top_rows[2,34] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    bsc_1 = top_rows[0,35] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    bsc_2 = top_rows[1,35] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    bsc_3 = top_rows[2,35] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    dc_1 = top_rows[0,36] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    dc_2 = top_rows[1,36] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    dc_3 = top_rows[2,36] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    st_1 = top_rows[0,37] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    st_2 = top_rows[1,37] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    st_3 = top_rows[2,37] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    sr_1 = top_rows[0,38] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    sr_2 = top_rows[1,38] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    sr_3 = top_rows[2,38] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    bd_1 = top_rows[0,39] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    bd_2 = top_rows[1,39] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    bd_3 = top_rows[2,39] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    df_1 = top_rows[0,40] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    df_2 = top_rows[1,40] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    df_3 = top_rows[2,40] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    ra_1 = top_rows[0,41] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    ra_2 = top_rows[1,41] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    ra_3 = top_rows[2,41] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    tw_1 = top_rows[0,42] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    tw_2 = top_rows[1,42] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    tw_3 = top_rows[2,42] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    rls_1 = top_rows[0,43] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    rls_2 = top_rows[1,43] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    rls_3 = top_rows[2,43] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    rlr_1 = top_rows[0,44] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    rlr_2 = top_rows[1,44] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    rlr_3 = top_rows[2,44] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    fa_1 = top_rows[0,45] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    fa_2 = top_rows[1,45] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    fa_3 = top_rows[2,45] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    fls_1 = top_rows[0,46] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    fls_2 = top_rows[1,46] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    fls_3 = top_rows[2,46] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    fu_1 = top_rows[0,47] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    fu_2 = top_rows[1,47] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    fu_3 = top_rows[2,47] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    uh_1 = top_rows[0,48] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    uh_2 = top_rows[1,48] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    uh_3 = top_rows[2,48] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    uw_1 = top_rows[0,49] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    uw_2 = top_rows[1,49] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    uw_3 = top_rows[2,49] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    uc_1 = top_rows[0,50] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    uc_2 = top_rows[1,50] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    uc_3 = top_rows[2,50] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    ud_1 = top_rows[0,51] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    ud_2 = top_rows[1,51] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    ud_3 = top_rows[2,51] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    ftp_1 = top_rows[0,52] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    ftp_2 = top_rows[1,52] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    ftp_3 = top_rows[2,52] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    rtp_1 = top_rows[0,53] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    rtp_2 = top_rows[1,53] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    rtp_3 = top_rows[2,53] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+    tl_1 = top_rows[0,54] if top_rows.shape[0] > 0 and top_rows.shape[1] > 0 else 0
+    tl_2 = top_rows[1,54] if top_rows.shape[0] > 1 and top_rows.shape[1] > 0 else 0
+    tl_3 = top_rows[2,54] if top_rows.shape[0] > 2 and top_rows.shape[1] > 0 else 0
+
+    # PEGA O FINAL DA EXECUÇÃO
+    fim = time.time()
+
+    # RETORNO DAS PREDICOES COMO JSON
+    json_formatted_str = json.dumps({
+        'sucesso': True,
+        'tempo_execucao': fim - inicio,
+        'matriz_utilizada': dam['matriz_id'],
+        'haplotipos_sim': len(bulls),
+        'caracteristicas_sim': len(bulls) * 53,
+        'potenciais_sim': len(bulls) * 2 * 11,
+        'doadora': {
+            'doadora_tpi': dam_TPI,
+            'doadora_nm': dam_NM,
+            'doadora_cm': dam_CM,
+            'doadora_efi': dam_EFI,
+            'doadora_milk': dam_MILK,
+            'doadora_fat': dam_FAT,
+            'doadora_pro': dam_PRO,
+            'doadora_fat_p': dam_FAT_P,
+            'doadora_pro_p': dam_PRO_P,
+            'doadora_fe': dam_FE,
+            'doadora_fsav': dam_FSAV,
+            'doadora_scs': dam_SCS,
+            'doadora_pl': dam_PL,
+            'doadora_hliv': dam_HLIV,
+            'doadora_liv': dam_LIV,
+            'doadora_dpr': dam_DPR,
+            'doadora_hcr': dam_HCR,
+            'doadora_ccr': dam_CCR,
+            'doadora_fi': dam_FI,
+            'doadora_mast': dam_MAST,
+            'doadora_metr': dam_METR,
+            'doadora_retp': dam_RETP,
+            'doadora_keto': dam_KETO,
+            'doadora_da': dam_DA,
+            'doadora_mfev': dam_MFEV,
+            'doadora_ht': dam_HT,
+            'doadora_gl': dam_GL,
+            'doadora_efc': dam_EFC,
+            'doadora_sce': dam_SCE,
+            'doadora_ssb': dam_SSB,
+            'doadora_ptat': dam_PTAT,
+            'doadora_udc': dam_UDC,
+            'doadora_flc': dam_FLC,
+            'doadora_bsc': dam_BSC,
+            'doadora_dc': dam_DC,
+            'doadora_st': dam_ST,
+            'doadora_sr': dam_SR,
+            'doadora_bd': dam_BD,
+            'doadora_df': dam_DF,
+            'doadora_ra': dam_RA,
+            'doadora_tw': dam_TW,
+            'doadora_rls': dam_RLS,
+            'doadora_rlr': dam_RLR,
+            'doadora_fa': dam_FA,
+            'doadora_fls': dam_FLS,
+            'doadora_fu': dam_FU,
+            'doadora_uh': dam_UH,
+            'doadora_uw': dam_UW,
+            'doadora_uc': dam_UC,
+            'doadora_ud': dam_UD,
+            'doadora_ftp': dam_FTP,
+            'doadora_rtp': dam_RTP,
+            'doadora_tl': dam_TL
+        },
+        'opcao1': {
+            'short_1': short_1,
+            'naab_1': naab_1,
+            'tpi_1': int(tpi_1),
+            'nm_1': int(nm_1),
+            'cm_1': int(cm_1),
+            'efi_1': int(efi_1),
+            'milk_1': int(milk_1),
+            'fat_1': int(fat_1),
+            'pro_1': int(pro_1),
+            'fatp_1': round(fatp_1,2),
+            'prop_1': round(prop_1,2),
+            'fe_1': int(fe_1),
+            'fsav_1': int(fsav_1),
+            'scs_1': round(scs_1,2),
+            'pl_1': round(pl_1,2),
+            'hliv_1': round(hliv_1,2),
+            'liv_1': round(liv_1,2),
+            'dpr_1': round(dpr_1,2),
+            'hcr_1': round(hcr_1,2),
+            'ccr_1': round(ccr_1,2),
+            'fi_1': round(fi_1,2),
+            'mast_1': round(mast_1,2),
+            'metr_1': round(metr_1,2),
+            'retp_1': round(retp_1,2),
+            'keto_1': round(keto_1,2),
+            'da_1': round(da_1,2),
+            'mfev_1': round(mfev_1,2),
+            'ht_1': round(ht_1,2),
+            'gl_1': round(gl_1,2),
+            'efc_1': round(efc_1,2),
+            'sce_1': round(sce_1,2),
+            'ssb_1': round(ssb_1,2),
+            'ptat_1': round(ptat_1,2),
+            'udc_1': round(udc_1,2),
+            'flc_1': round(flc_1,2),
+            'bsc_1': round(bsc_1,2),
+            'dc_1': round(dc_1,2),
+            'st_1': round(st_1,2),
+            'sr_1': round(sr_1,2),
+            'bd_1': round(bd_1,2),
+            'df_1': round(df_1,2),
+            'ra_1': round(ra_1,2),
+            'tw_1': round(tw_1,2),
+            'rls_1': round(rls_1,2),
+            'rlr_1': round(rlr_1,2),
+            'fa_1': round(fa_1,2),
+            'fls_1': round(fls_1,2),
+            'fu_1': round(fu_1,2),
+            'uh_1': round(uh_1,2),
+            'uw_1': round(uw_1,2),
+            'uc_1': round(uc_1,2),
+            'ud_1': round(ud_1,2),
+            'ftp_1': round(ftp_1,2),
+            'rtp_1': round(rtp_1,2),
+            'tl_1': round(tl_1,2)
+        },
+        'opcao2': {
+            'short_2': short_2,
+            'naab_2': naab_2,
+            'tpi_2': int(tpi_2),
+            'nm_2': int(nm_2),
+            'cm_2': int(cm_2),
+            'efi_2': int(efi_2),
+            'milk_2': int(milk_2),
+            'fat_2': int(fat_2),
+            'pro_2': int(pro_2),
+            'fatp_2': round(fatp_2,2),
+            'prop_2': round(prop_2,2),
+            'fe_2': int(fe_2),
+            'fsav_2': int(fsav_2),
+            'scs_2': round(scs_2,2),
+            'pl_2': round(pl_2,2),
+            'hliv_2': round(hliv_2,2),
+            'liv_2': round(liv_2,2),
+            'dpr_2': round(dpr_2,2),
+            'hcr_2': round(hcr_2,2),
+            'ccr_2': round(ccr_2,2),
+            'fi_2': round(fi_2,2),
+            'mast_2': round(mast_2,2),
+            'metr_2': round(metr_2,2),
+            'retp_2': round(retp_2,2),
+            'keto_2': round(keto_2,2),
+            'da_2': round(da_2,2),
+            'mfev_2': round(mfev_2,2),
+            'ht_2': round(ht_2,2),
+            'gl_2': round(gl_2,2),
+            'efc_2': round(efc_2,2),
+            'sce_2': round(sce_2,2),
+            'ssb_2': round(ssb_2,2),
+            'ptat_2': round(ptat_2,2),
+            'udc_2': round(udc_2,2),
+            'flc_2': round(flc_2,2),
+            'bsc_2': round(bsc_2,2),
+            'dc_2': round(dc_2,2),
+            'st_2': round(st_2,2),
+            'sr_2': round(sr_2,2),
+            'bd_2': round(bd_2,2),
+            'df_2': round(df_2,2),
+            'ra_2': round(ra_2,2),
+            'tw_2': round(tw_2,2),
+            'rls_2': round(rls_2,2),
+            'rlr_2': round(rlr_2,2),
+            'fa_2': round(fa_2,2),
+            'fls_2': round(fls_2,2),
+            'fu_2': round(fu_2,2),
+            'uh_2': round(uh_2,2),
+            'uw_2': round(uw_2,2),
+            'uc_2': round(uc_2,2),
+            'ud_2': round(ud_2,2),
+            'ftp_2': round(ftp_2,2),
+            'rtp_2': round(rtp_2,2),
+            'tl_2': round(tl_2,2)
+        },
+        'opcao3': {
+            'short_3': short_3,
+            'naab_3': naab_3,
+            'tpi_3': int(tpi_3),
+            'nm_3': int(nm_3),
+            'cm_3': int(cm_3),
+            'efi_3': int(efi_3),
+            'milk_3': int(milk_3),
+            'fat_3': int(fat_3),
+            'pro_3': int(pro_3),
+            'fatp_3': round(fatp_3,2),
+            'prop_3': round(prop_3,2),
+            'fe_3': int(fe_3),
+            'fsav_3': int(fsav_3),
+            'scs_3': round(scs_3,2),
+            'pl_3': round(pl_3,2),
+            'hliv_3': round(hliv_3,2),
+            'liv_3': round(liv_3,2),
+            'dpr_3': round(dpr_3,2),
+            'hcr_3': round(hcr_3,2),
+            'ccr_3': round(ccr_3,2),
+            'fi_3': round(fi_3,2),
+            'mast_3': round(mast_3,2),
+            'metr_3': round(metr_3,2),
+            'retp_3': round(retp_3,2),
+            'keto_3': round(keto_3,2),
+            'da_3': round(da_3,2),
+            'mfev_3': round(mfev_3,2),
+            'ht_3': round(ht_3,2),
+            'gl_3': round(gl_3,2),
+            'efc_3': round(efc_3,2),
+            'sce_3': round(sce_3,2),
+            'ssb_3': round(ssb_3,2),
+            'ptat_3': round(ptat_3,2),
+            'udc_3': round(udc_3,2),
+            'flc_3': round(flc_3,2),
+            'bsc_3': round(bsc_3,2),
+            'dc_3': round(dc_3,2),
+            'st_3': round(st_3,2),
+            'sr_3': round(sr_3,2),
+            'bd_3': round(bd_3,2),
+            'df_3': round(df_3,2),
+            'ra_3': round(ra_3,2),
+            'tw_3': round(tw_3,2),
+            'rls_3': round(rls_3,2),
+            'rlr_3': round(rlr_3,2),
+            'fa_3': round(fa_3,2),
+            'fls_3': round(fls_3,2),
+            'fu_3': round(fu_3,2),
+            'uh_3': round(uh_3,2),
+            'uw_3': round(uw_3,2),
+            'uc_3': round(uc_3,2),
+            'ud_3': round(ud_3,2),
+            'ftp_3': round(ftp_3,2),
+            'rtp_3': round(rtp_3,2),
+            'tl_3': round(tl_3,2)
+        },
+        'hh1_risk': hh1_risk,
+        'hh2_risk': hh2_risk,
+        'hh3_risk': hh3_risk,
+        'hh4_risk': hh4_risk,
+        'hh5_risk': hh5_risk,
+        'hh6_risk': hh6_risk,
+        'hh0_risk': hh0_risk,
+        'hhc_risk': hhc_risk,
+        'hcd_risk': hcd_risk,
+        'hhd_risk': hhd_risk,
+        'hhm_risk': hhm_risk,
+        'filter_warning': filter_warning,
+        'linhagens_evitadas': linhagens
+    }, indent=2)
+
+    print(json_formatted_str)
+
+    # APAGA DADOS DE OPÇÃO
+    cursor.execute('DELETE FROM acasalamento_opcao WHERE acasalamento_id = \'' + data['mating_code'] + '\'')
+
+    # APAGA DADOS DE EVITADA
+    cursor.execute('DELETE FROM acasalamento_evitada WHERE acasalamento_id = \'' + data['mating_code'] + '\'')
+
+    # MONTA A SQL PARA SALVAR O ACASALAMENTO
+    sql = """UPDATE acasalamento
+                SET status = %s
+                  , status_processamento = %s
+                  , tempo_execucao = %s
+                  , haplotipos_sim = %s
+                  , caracteristicas_sim = %s
+                  , potenciais_sim = %s
+                  , filtro_utilizado = %s
+                  , doadora_tpi = %s
+                  , doadora_nm = %s
+                  , doadora_cm = %s
+                  , doadora_efi = %s
+                  , doadora_milk = %s
+                  , doadora_fat = %s
+                  , doadora_pro = %s
+                  , doadora_fat_p = %s
+                  , doadora_pro_p = %s
+                  , doadora_fe = %s
+                  , doadora_fsav = %s
+                  , doadora_scs = %s
+                  , doadora_pl = %s
+                  , doadora_hliv = %s
+                  , doadora_liv = %s
+                  , doadora_dpr = %s
+                  , doadora_hcr = %s
+                  , doadora_ccr = %s
+                  , doadora_fi = %s
+                  , doadora_mast = %s
+                  , doadora_metr = %s
+                  , doadora_retp = %s
+                  , doadora_keto = %s
+                  , doadora_da = %s
+                  , doadora_mfev = %s
+                  , doadora_ht = %s
+                  , doadora_gl = %s
+                  , doadora_efc = %s
+                  , doadora_sce = %s
+                  , doadora_ssb = %s
+                  , doadora_ptat = %s
+                  , doadora_udc = %s
+                  , doadora_flc = %s
+                  , doadora_bsc = %s
+                  , doadora_dc = %s
+                  , doadora_st = %s
+                  , doadora_sr = %s
+                  , doadora_bd = %s
+                  , doadora_df = %s
+                  , doadora_ra = %s
+                  , doadora_tw = %s
+                  , doadora_rls = %s
+                  , doadora_rlr = %s
+                  , doadora_fa = %s
+                  , doadora_fls = %s
+                  , doadora_fu = %s
+                  , doadora_uh = %s
+                  , doadora_uw = %s
+                  , doadora_uc = %s
+                  , doadora_ud = %s
+                  , doadora_ftp = %s
+                  , doadora_rtp = %s
+                  , doadora_tl = %s
+                  , hh1_risco = %s
+                  , hh2_risco = %s
+                  , hh3_risco = %s
+                  , hh4_risco = %s
+                  , hh5_risco = %s
+                  , hh6_risco = %s
+                  , hh0_risco = %s
+                  , hhc_risco = %s
+                  , hcd_risco = %s
+                  , hhd_risco = %s
+                  , hhm_risco = %s
+                  , linhagens_evitadas = %s
+                  , data_alterado = now()
+                  , alterado_por = %s
+              WHERE acasalamento_id = %s"""
+
+    # SALVA OS DADOS DO ACASALAMENTO
+    cursor.execute(sql, (
+        '1',
+        '2',
+        (fim - inicio),
+        len(bulls),
+        len(bulls) * 53,
+        len(bulls) * 2 * 11,
+        filter_warning,
+        dam_TPI,
+        dam_NM,
+        dam_CM,
+        dam_EFI,
+        dam_MILK,
+        dam_FAT,
+        dam_PRO,
+        dam_FAT_P,
+        dam_PRO_P,
+        dam_FE,
+        dam_FSAV,
+        dam_SCS,
+        dam_PL,
+        dam_HLIV,
+        dam_LIV,
+        dam_DPR,
+        dam_HCR,
+        dam_CCR,
+        dam_FI,
+        dam_MAST,
+        dam_METR,
+        dam_RETP,
+        dam_KETO,
+        dam_DA,
+        dam_MFEV,
+        dam_HT,
+        dam_GL,
+        dam_EFC,
+        dam_SCE,
+        dam_SSB,
+        dam_PTAT,
+        dam_UDC,
+        dam_FLC,
+        dam_BSC,
+        dam_DC,
+        dam_ST,
+        dam_SR,
+        dam_BD,
+        dam_DF,
+        dam_RA,
+        dam_TW,
+        dam_RLS,
+        dam_RLR,
+        dam_FA,
+        dam_FLS,
+        dam_FU,
+        dam_UH,
+        dam_UW,
+        dam_UC,
+        dam_UD,
+        dam_FTP,
+        dam_RTP,
+        dam_TL,
+        hh1_risk,
+        hh2_risk,
+        hh3_risk,
+        hh4_risk,
+        hh5_risk,
+        hh6_risk,
+        hh0_risk,
+        hhc_risk,
+        hcd_risk,
+        hhd_risk,
+        hhm_risk,
+        linhagens,
+        data['user_code'],
+        data['mating_code']
+    ))
+
+    # MONTA A SQL PARA SALVAR AS OPÇÕES
+    sql_opcao = """
+        INSERT INTO acasalamento_opcao (
+              acasalamento_id
+            , shortname
+            , naab
+            , ordem
+            , tpi
+            , nm
+            , cm
+            , efi
+            , milk
+            , fat
+            , pro
+            , fatp
+            , prop
+            , fe
+            , fsav
+            , scs
+            , pl
+            , hliv
+            , liv
+            , dpr
+            , hcr
+            , ccr
+            , fi
+            , mast
+            , metr
+            , retp
+            , keto
+            , da
+            , mfev
+            , ht
+            , gl
+            , efc
+            , sce
+            , ssb
+            , ptat
+            , udc
+            , flc
+            , bsc
+            , dc
+            , st
+            , sr
+            , bd
+            , df
+            , ra
+            , tw
+            , rls
+            , rlr
+            , fa
+            , fls
+            , fu
+            , uh
+            , uw
+            , uc
+            , ud
+            , ftp
+            , rtp
+            , tl
+            , criado_por
+        ) VALUES (
+            %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+            , %s
+        )"""
+
+    # SALVA A OPÇÃO 1
+    cursor.execute(sql_opcao, (
+        data['mating_code'],
+        short_1,
+        naab_1,
+        1,
+        int(tpi_1),
+        int(nm_1),
+        int(cm_1),
+        int(efi_1),
+        int(milk_1),
+        int(fat_1),
+        int(pro_1),
+        round(fatp_1,2),
+        round(prop_1,2),
+        int(fe_1),
+        int(fsav_1),
+        round(scs_1,2),
+        round(pl_1,2),
+        round(hliv_1,2),
+        round(liv_1,2),
+        round(dpr_1,2),
+        round(hcr_1,2),
+        round(ccr_1,2),
+        round(fi_1,2),
+        round(mast_1,2),
+        round(metr_1,2),
+        round(retp_1,2),
+        round(keto_1,2),
+        round(da_1,2),
+        round(mfev_1,2),
+        round(ht_1,2),
+        round(gl_1,2),
+        round(efc_1,2),
+        round(sce_1,2),
+        round(ssb_1,2),
+        round(ptat_1,2),
+        round(udc_1,2),
+        round(flc_1,2),
+        round(bsc_1,2),
+        round(dc_1,2),
+        round(st_1,2),
+        round(sr_1,2),
+        round(bd_1,2),
+        round(df_1,2),
+        round(ra_1,2),
+        round(tw_1,2),
+        round(rls_1,2),
+        round(rlr_1,2),
+        round(fa_1,2),
+        round(fls_1,2),
+        round(fu_1,2),
+        round(uh_1,2),
+        round(uw_1,2),
+        round(uc_1,2),
+        round(ud_1,2),
+        round(ftp_1,2),
+        round(rtp_1,2),
+        round(tl_1,2),
+        data['user_code']
+    ))
+
+    # SALVA A OPÇÃO 2
+    cursor.execute(sql_opcao, (
+        data['mating_code'],
+        short_2,
+        naab_2,
+        2,
+        int(tpi_2),
+        int(nm_2),
+        int(cm_2),
+        int(efi_2),
+        int(milk_2),
+        int(fat_2),
+        int(pro_2),
+        round(fatp_2,2),
+        round(prop_2,2),
+        int(fe_2),
+        int(fsav_2),
+        round(scs_2,2),
+        round(pl_2,2),
+        round(hliv_2,2),
+        round(liv_2,2),
+        round(dpr_2,2),
+        round(hcr_2,2),
+        round(ccr_2,2),
+        round(fi_2,2),
+        round(mast_2,2),
+        round(metr_2,2),
+        round(retp_2,2),
+        round(keto_2,2),
+        round(da_2,2),
+        round(mfev_2,2),
+        round(ht_2,2),
+        round(gl_2,2),
+        round(efc_2,2),
+        round(sce_2,2),
+        round(ssb_2,2),
+        round(ptat_2,2),
+        round(udc_2,2),
+        round(flc_2,2),
+        round(bsc_2,2),
+        round(dc_2,2),
+        round(st_2,2),
+        round(sr_2,2),
+        round(bd_2,2),
+        round(df_2,2),
+        round(ra_2,2),
+        round(tw_2,2),
+        round(rls_2,2),
+        round(rlr_2,2),
+        round(fa_2,2),
+        round(fls_2,2),
+        round(fu_2,2),
+        round(uh_2,2),
+        round(uw_2,2),
+        round(uc_2,2),
+        round(ud_2,2),
+        round(ftp_2,2),
+        round(rtp_2,2),
+        round(tl_2,2),
+        data['user_code']
+    ))
+
+    # SALVA A OPÇÃO 3
+    cursor.execute(sql_opcao, (
+        data['mating_code'],
+        short_3,
+        naab_3,
+        3,
+        int(tpi_3),
+        int(nm_3),
+        int(cm_3),
+        int(efi_3),
+        int(milk_3),
+        int(fat_3),
+        int(pro_3),
+        round(fatp_3,2),
+        round(prop_3,2),
+        int(fe_3),
+        int(fsav_3),
+        round(scs_3,2),
+        round(pl_3,2),
+        round(hliv_3,2),
+        round(liv_3,2),
+        round(dpr_3,2),
+        round(hcr_3,2),
+        round(ccr_3,2),
+        round(fi_3,2),
+        round(mast_3,2),
+        round(metr_3,2),
+        round(retp_3,2),
+        round(keto_3,2),
+        round(da_3,2),
+        round(mfev_3,2),
+        round(ht_3,2),
+        round(gl_3,2),
+        round(efc_3,2),
+        round(sce_3,2),
+        round(ssb_3,2),
+        round(ptat_3,2),
+        round(udc_3,2),
+        round(flc_3,2),
+        round(bsc_3,2),
+        round(dc_3,2),
+        round(st_3,2),
+        round(sr_3,2),
+        round(bd_3,2),
+        round(df_3,2),
+        round(ra_3,2),
+        round(tw_3,2),
+        round(rls_3,2),
+        round(rlr_3,2),
+        round(fa_3,2),
+        round(fls_3,2),
+        round(fu_3,2),
+        round(uh_3,2),
+        round(uw_3,2),
+        round(uc_3,2),
+        round(ud_3,2),
+        round(ftp_3,2),
+        round(rtp_3,2),
+        round(tl_3,2),
+        data['user_code']
+    ))
+
+    # MONTA A SQL PARA SALVAR AS LINHAGENS EVITADAS
+    sql_evitada = """
+        INSERT INTO acasalamento_evitada (
+              acasalamento_id
+            , nome
+            , criado_por
+        ) VALUES (
+            %s
+            , %s
+            , %s
+        )"""
+
+    # PERCORRE AS LINHAGENS EVITADAS PARA SALVAR
+    for linhagem in linhagens:
+        # SALVA A LINHAGEM EVITADA
+        cursor.execute(sql_evitada, (
+            data['mating_code'],
+            linhagem,
+            data['user_code']
+        ))
+
+    conn.commit()
+
+    # INVOCA O LAMBDA DO PDF
+    lambda_client.invoke(FunctionName = os.environ['LAMBDA_PDF'], InvocationType = 'Event', Payload = json.dumps({"batch": data['batch'], "acasalamento_id": data['mating_code'], "type": 'mating'}))
+
+    return True
+
+# PERMITE CHAMAR QUALQUER FUNÇÃO POR LINHA DE COMANDO
+if __name__ == '__main__':
+    globals()[sys.argv[1]]()
